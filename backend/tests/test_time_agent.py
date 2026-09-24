@@ -2791,6 +2791,37 @@ def test_activity_creation_and_deletion_guidance(client, agent_test_project, db_
     assert any(term in reply_del.lower() for term in ["primavera", "wbs", "baseline", "activities table", "schedule"])
 
 
+def test_agent_process_attachment_flow(client, agent_test_project, db_session):
+    """Verifies uploading an attachment to the Time Agent conversation."""
+    res_conv = client.post(
+        f"/api/v1/projects/{agent_test_project.id}/agent/conversations",
+        json={"title": "Attachment Test", "force_new": True},
+    )
+    assert res_conv.status_code == 200
+    conv_id = res_conv.json()["conversation_id"]
+
+    csv_content = b"ActivityCode,Description,Progress,Quantity,Unit\nCIV-1001,Foundation Concrete Pour,50%,30,m3\n"
+    res_upload = client.post(
+        f"/api/v1/projects/{agent_test_project.id}/agent/conversations/{conv_id}/attachments",
+        files={"file": ("daily_report.csv", csv_content, "text/csv")},
+    )
+    assert res_upload.status_code == 201
+    data = res_upload.json()
+    assert "artifact_id" in data
+    assert data["filename"] == "daily_report.csv"
+    assert data["agent_message"] is not None
+
+    # Verify conversation history includes the upload notice and agent response
+    conv_detail = client.get(
+        f"/api/v1/projects/{agent_test_project.id}/agent/conversations/{conv_id}"
+    )
+    assert conv_detail.status_code == 200
+    history = conv_detail.json()["history"]
+    assert len(history) >= 2
+    assert any("daily_report.csv" in m["content"] for m in history)
+
+
+
 
 
 

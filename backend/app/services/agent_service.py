@@ -2532,28 +2532,75 @@ class TimeAgentService:
         if not conv:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
 
-        # Upload to MinIO using existing MinIO service
-        storage_key, file_hash, is_dup = minio_service.upload_artifact(
+        # Determine MIME and artifact type
+        clean_name = minio_service.sanitize_filename(filename or "attachment.bin")
+        ext = clean_name.split(".")[-1].lower() if "." in clean_name else ""
+        if ext == "pdf":
+            atype = "PDF_REPORT"
+            mtype = "application/pdf"
+        elif ext in ("xlsx", "xls", "csv"):
+            atype = "SPREADSHEET"
+            mtype = "text/csv" if ext == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif ext in ("m4a", "mp3", "wav", "ogg"):
+            atype = "VOICE_MEMO"
+            mtype = f"audio/{ext}"
+        elif ext in ("jpg", "jpeg", "png"):
+            atype = "IMAGE"
+            mtype = f"image/{ext}"
+        else:
+            atype = "OTHER"
+            mtype = "application/octet-stream"
+
+        artifact_id = f"art-{uuid.uuid4().hex[:8]}"
+        report_id = f"rep-chat-{conv.id[:8]}"
+        storage_key = minio_service.generate_object_key(
             project_id=project_id,
-            file_bytes=file_bytes,
-            filename=filename,
+            report_id=report_id,
+            artifact_id=artifact_id,
+            original_filename=clean_name,
         )
+        file_hash = minio_service.compute_sha256(file_bytes)
+
+        # Upload to MinIO using existing MinIO service
+        try:
+            minio_service.upload_artifact(
+                object_key=storage_key,
+                data=file_bytes,
+                content_type=mtype,
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload artifact to MinIO: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to store attachment: {e}",
+            )
 
         # Record in artifacts table
         artifact = Artifact(
-            id=f"art-{uuid.uuid4().hex[:8]}",
+            id=artifact_id,
             project_id=project_id,
-            filename=f"projects/{project_id}/reports/chat/{filename}",
-            original_filename=filename,
-            file_type=filename.split(".")[-1].lower() if "." in filename else "bin",
-            file_size=len(file_bytes),
+            report_id=report_id,
+            artifact_type=atype,
+            original_filename=clean_name,
+            mime_type=mtype,
+            size_bytes=len(file_bytes),
             sha256=file_hash,
-            storage_bucket="sih-artifacts",
+            storage_bucket=minio_service.bucket,
             storage_key=storage_key,
             uploaded_by=caller_id,
-            extraction_status="PENDING",
+            extraction_status="UPLOADED",
         )
         db.add(artifact)
+        db.flush()
+
+        # Record user message in conversation
+        user_msg = ConversationMessage(
+            id=f"msg-{uuid.uuid4().hex[:8]}",
+            conversation_id=conv.id,
+            sender="USER",
+            content=f"Uploaded shift report document: {clean_name}",
+        )
+        db.add(user_msg)
         db.flush()
 
         # Call ExtractionService to extract events from document
@@ -2569,6 +2616,7 @@ class TimeAgentService:
             ev.source_type = "HYBRID"
         db.flush()
 
+        card = None
         if extracted_events:
             first_event = extracted_events[0]
             conv.active_event_id = first_event.id
@@ -2581,66 +2629,86 @@ class TimeAgentService:
                 top_c = eval_res.selected_candidate
                 act = db.query(Activity).filter(Activity.id == top_c.activity_id).first()
 
-                prev_pct = act.percent_complete or 0.0
-                proposed_pct = min(100.0, prev_pct + 25.0 if prev_pct < 75.0 else 100.0)
-                if first_event.quantity and act.planned_quantity and act.planned_quantity > 0:
-                    proposed_pct = min(100.0, prev_pct + (first_event.quantity / act.planned_quantity) * 100.0)
-                proposed_pct = round(proposed_pct, 2)
+                if act:
+                    prev_pct = act.percent_complete or 0.0
+                    proposed_pct = min(100.0, prev_pct + 25.0 if prev_pct < 75.0 else 100.0)
+                    if first_event.quantity and act.planned_quantity and act.planned_quantity > 0:
+                        proposed_pct = min(100.0, prev_pct + (first_event.quantity / act.planned_quantity) * 100.0)
+                    proposed_pct = round(proposed_pct, 2)
 
-                proposal = UpdateProposal(
-                    id=f"prop-{uuid.uuid4().hex[:8]}",
-                    conversation_id=conv.id,
-                    event_id=first_event.id,
-                    project_id=project_id,
-                    matched_activity_id=act.id,
-                    proposed_state=json.dumps({
-                        "current_percent": prev_pct,
-                        "proposed_percent": proposed_pct,
-                        "incremental_quantity": first_event.quantity,
-                        "unit": first_event.unit,
-                    }),
-                    baseline_activity_state=json.dumps({
-                        "percent_complete": act.percent_complete,
-                        "status": act.status,
-                    }),
-                    status="PENDING",
-                    expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=300),
-                )
-                db.add(proposal)
-                db.commit()
+                    proposal = UpdateProposal(
+                        id=f"prop-{uuid.uuid4().hex[:8]}",
+                        conversation_id=conv.id,
+                        event_id=first_event.id,
+                        project_id=project_id,
+                        matched_activity_id=act.id,
+                        proposed_state=json.dumps({
+                            "current_percent": prev_pct,
+                            "proposed_percent": proposed_pct,
+                            "incremental_quantity": first_event.quantity,
+                            "unit": first_event.unit,
+                        }),
+                        baseline_activity_state=json.dumps({
+                            "percent_complete": act.percent_complete,
+                            "status": act.status,
+                        }),
+                        status="PENDING",
+                        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=300),
+                    )
+                    db.add(proposal)
+                    db.flush()
 
-                card = ActionCardDTO(
-                    type="PROPOSAL_CONFIRMATION",
-                    proposal_id=proposal.id,
-                    event_id=first_event.id,
-                    activity_id=act.id,
-                    activity_code=act.activity_code,
-                    activity_name=act.name,
-                    current_percent=prev_pct,
-                    proposed_percent=proposed_pct,
-                    incremental_quantity=first_event.quantity,
-                    unit=first_event.unit,
-                    execution_date=first_event.execution_date.strftime("%Y-%m-%d"),
-                )
-                agent_text = (
-                    f"Processed {filename} and extracted {len(extracted_events)} event(s). "
-                    f"Matched to {act.activity_code} ({act.name}). Ready for your confirmation."
-                )
+                    exec_date_str = (
+                        first_event.execution_date.strftime("%Y-%m-%d")
+                        if isinstance(first_event.execution_date, datetime)
+                        else str(first_event.execution_date or "")
+                    )
+
+                    card = ActionCardDTO(
+                        type="PROPOSAL_CONFIRMATION",
+                        proposal_id=proposal.id,
+                        event_id=first_event.id,
+                        activity_id=act.id,
+                        activity_code=act.activity_code,
+                        activity_name=act.name,
+                        current_percent=prev_pct,
+                        proposed_percent=proposed_pct,
+                        incremental_quantity=first_event.quantity,
+                        unit=first_event.unit,
+                        execution_date=exec_date_str,
+                    )
+                    agent_text = (
+                        f"Processed {clean_name} and extracted {len(extracted_events)} event(s). "
+                        f"Matched to {act.activity_code} ({act.name}). Ready for your confirmation."
+                    )
+                else:
+                    agent_text = (
+                        f"Processed {clean_name} and extracted {len(extracted_events)} event(s). "
+                        f"Matched candidate activity could not be found."
+                    )
             else:
-                db.commit()
                 agent_text = (
-                    f"Processed {filename} and extracted {len(extracted_events)} event(s). "
+                    f"Processed {clean_name} and extracted {len(extracted_events)} event(s). "
                     f"The top candidate match is ambiguous. Which specific foundation or work package was performed?"
                 )
-                card = None
         else:
-            db.commit()
-            agent_text = f"Processed {filename}, but no physical construction progress events were detected."
-            card = None
+            agent_text = f"Processed {clean_name}, but no physical construction progress events were detected."
+
+        meta_json = json.dumps(card.model_dump()) if card else None
+        agent_msg = ConversationMessage(
+            id=f"msg-{uuid.uuid4().hex[:8]}",
+            conversation_id=conv.id,
+            sender="AGENT",
+            content=agent_text,
+            message_metadata=meta_json,
+        )
+        conv.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.add(agent_msg)
+        db.commit()
 
         return AttachmentResponseDTO(
             artifact_id=artifact.id,
-            filename=filename,
+            filename=clean_name,
             extracted_events_count=len(extracted_events),
             agent_message=agent_text,
             action_card=card,
