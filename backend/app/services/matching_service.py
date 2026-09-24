@@ -73,6 +73,23 @@ class MatchingService:
             return 0.4
         return 0.1
 
+    CONVERSATIONAL_STOP_WORDS = {
+        "update", "progress", "percent", "percentage", "status", "complete", "completed",
+        "completion", "done", "finish", "finished", "started", "start", "activity", "task",
+        "please", "set", "mark", "report", "today", "yesterday", "current", "work", "on",
+        "at", "to", "for", "in", "of", "the", "is", "are", "was", "were", "and",
+        "or", "it", "this", "that", "kar", "karo", "karna", "diya", "gaya", "hai", "ho",
+        "ka", "ki", "ke", "ko", "mein", "par", "se", "bhi", "aaj", "kal"
+    }
+
+    @classmethod
+    def _extract_subject_tokens(cls, text: str) -> List[str]:
+        if not text:
+            return []
+        clean = re.sub(r"[^\w\s-]", " ", text.lower())
+        tokens = [t.strip("-") for t in clean.split() if t.strip("-") and t.strip("-") not in cls.CONVERSATIONAL_STOP_WORDS and not t.strip("-").isdigit()]
+        return tokens
+
     @classmethod
     def score_activity(
         cls, event: ExecutionEvent, activity: Activity, wbs_node: Optional[WBSNode]
@@ -104,10 +121,29 @@ class MatchingService:
                     s_id = 1.0
 
         # 2. Text & Token Similarity (S_text)
-        s_text = cls.calculate_text_similarity(
-            f"{event.description} {event.verbatim_excerpt} {event.activity_reference or ''}",
-            activity.name,
-        )
+        combined_text = f"{event.description} {event.verbatim_excerpt} {event.activity_reference or ''}"
+        s_text = cls.calculate_text_similarity(combined_text, activity.name)
+
+        # Subject keyword alignment: check if user query keywords uniquely match activity
+        subj_tokens = cls._extract_subject_tokens(combined_text)
+        exact_subject_matched = False
+        query_coverage = 0.0
+        if subj_tokens:
+            act_name_lower = activity.name.lower()
+            act_tokens = set(re.findall(r"[a-z0-9]+", act_name_lower))
+            matched_subj = 0
+            for st in subj_tokens:
+                if st in act_tokens:
+                    matched_subj += 1
+                elif len(st) >= 3 and any(st in at or at in st for at in act_tokens):
+                    matched_subj += 1
+
+            query_coverage = matched_subj / len(subj_tokens)
+            if query_coverage == 1.0:
+                exact_subject_matched = True
+                s_text = max(s_text, 0.95)
+            elif query_coverage >= 0.5:
+                s_text = max(s_text, round(0.65 * query_coverage, 3))
 
         # 3. WBS & Hierarchy Alignment (S_wbs)
         s_wbs = 0.0
@@ -135,11 +171,14 @@ class MatchingService:
         # 5. Contextual Alignment (S_context)
         s_context = 0.0
         exact_location_matched = False
+        location_conflict = False
         if event.location:
             loc_lower = event.location.lower().strip()
             if loc_lower and (loc_lower in activity.name.lower() or (activity.location_code and loc_lower in activity.location_code.lower())):
                 s_context = 1.0
                 exact_location_matched = True
+            elif activity.location_code and loc_lower != activity.location_code.lower().strip():
+                location_conflict = True
         if event.contractor and activity.contractor_name:
             if event.contractor.lower() in activity.contractor_name.lower():
                 s_context = min(1.0, s_context + 0.2)
@@ -148,12 +187,15 @@ class MatchingService:
 
         # Weighted combination:
         # If exact activity code is present, S_total is guaranteed >= 0.95.
-        # If exact location tag is present (e.g. F-204 in 'Foundation Concrete Pour F-204'), S_total is guaranteed >= 0.88.
+        # If exact location tag is present (e.g. Unit 4 in 'Mechanical Pump Installation Unit 4'), S_total is guaranteed >= 0.95.
+        # If exact subject keywords match activity name, S_total is guaranteed >= 0.88.
         # If activity code/tag is not present, weights normalize across text, wbs, temporal, and contextual signals.
         if s_id == 1.0:
             s_total = max(0.95, 0.40 * s_id + 0.30 * s_text + 0.15 * s_wbs + 0.10 * s_temp + 0.05 * s_context)
         elif exact_location_matched:
-            s_total = max(0.88, 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp)
+            s_total = max(0.95 if (exact_subject_matched or s_text >= 0.80) else 0.88, 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp)
+        elif exact_subject_matched and not location_conflict:
+            s_total = max(0.88, 0.50 * s_text + 0.25 * s_wbs + 0.15 * s_temp + 0.10 * s_context)
         else:
             # Normalized weights when code is not cited in field narrative: 0.45 text, 0.25 wbs, 0.15 temp, 0.15 context
             s_total = (
@@ -162,6 +204,8 @@ class MatchingService:
                 + 0.15 * s_temp
                 + 0.15 * s_context
             )
+            if location_conflict:
+                s_total = max(0.0, s_total - 0.25)
 
         breakdown = {
             "s_id": round(s_id, 3),

@@ -29,7 +29,23 @@ import {
   TTSResponse,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+      return envUrl;
+    }
+    if (window.location.hostname && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return `${window.location.protocol}//${window.location.hostname}:8080`;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+}
+
+const API_BASE = {
+  toString: () => getApiBase(),
+  valueOf: () => getApiBase(),
+} as unknown as string;
 
 export class ApiError extends Error {
   errors: ValidationErrorDetail[];
