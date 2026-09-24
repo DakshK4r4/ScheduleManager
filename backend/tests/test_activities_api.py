@@ -81,3 +81,52 @@ def test_update_activity_patch(client, db_session):
     invalid_patch = {"percent_complete": 150.0}
     res_err = client.patch("/activities/act-1", json=invalid_patch)
     assert res_err.status_code == 422
+
+
+def test_create_and_get_activity_with_metadata(client, db_session):
+    seed_project(db_session)
+
+    create_payload = {
+        "activity_code": "CIV-9001",
+        "name": "Cooling Tower Foundation",
+        "wbs_id": "wbs-123",
+        "activity_type": "TT_Task",
+        "status": "NOT_STARTED",
+        "planned_duration": 30.0,
+        "location_code": "LOC-CT-01",
+        "discipline": "Civil",
+        "contractor_name": "Larsen & Toubro",
+        "planned_quantity": 450.5,
+        "quantity_unit": "m3",
+        "is_critical": True,
+        "total_float": 0.0,
+        "free_float": 0.0,
+    }
+    res_create = client.post("/projects/proj-123/activities", json=create_payload)
+    assert res_create.status_code == 201
+    act_data = res_create.json()
+    assert act_data["activity_code"] == "CIV-9001"
+    assert act_data["location_code"] == "LOC-CT-01"
+    assert act_data["discipline"] == "Civil"
+    assert act_data["contractor_name"] == "Larsen & Toubro"
+    assert act_data["planned_quantity"] == 450.5
+    assert act_data["quantity_unit"] == "m3"
+    assert act_data["is_critical"] is True
+
+    # Verify retrieval via GET /activities/{id}
+    res_get = client.get(f"/activities/{act_data['id']}")
+    assert res_get.status_code == 200
+    retrieved = res_get.json()
+    assert retrieved["location_code"] == "LOC-CT-01"
+    assert retrieved["discipline"] == "Civil"
+    assert retrieved["contractor_name"] == "Larsen & Toubro"
+    assert retrieved["planned_quantity"] == 450.5
+
+    # Verify in list activities
+    res_list = client.get("/projects/proj-123/activities?activity_code=CIV-9001")
+    assert res_list.status_code == 200
+    list_data = res_list.json()
+    assert list_data["total"] == 1
+    assert list_data["items"][0]["location_code"] == "LOC-CT-01"
+    assert list_data["items"][0]["discipline"] == "Civil"
+

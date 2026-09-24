@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from sqlalchemy import asc, desc, func
+from datetime import timezone
+from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.domain.models import Activity, WBSNode
@@ -28,6 +29,7 @@ class ActivityRepository:
         project_id: str,
         activity_code: Optional[str] = None,
         name: Optional[str] = None,
+        search: Optional[str] = None,
         wbs_id: Optional[str] = None,
         status: Optional[str] = None,
         start_date_from: Optional[datetime] = None,
@@ -47,10 +49,25 @@ class ActivityRepository:
             .filter(Activity.project_id == project_id)
         )
 
-        if activity_code:
-            query = query.filter(Activity.activity_code.ilike(f"%{activity_code}%"))
-        if name:
-            query = query.filter(Activity.name.ilike(f"%{name}%"))
+        if search:
+            query = query.filter(
+                or_(
+                    Activity.activity_code.ilike(f"%{search}%"),
+                    Activity.name.ilike(f"%{search}%"),
+                )
+            )
+        elif activity_code and name and activity_code == name:
+            query = query.filter(
+                or_(
+                    Activity.activity_code.ilike(f"%{activity_code}%"),
+                    Activity.name.ilike(f"%{name}%"),
+                )
+            )
+        else:
+            if activity_code:
+                query = query.filter(Activity.activity_code.ilike(f"%{activity_code}%"))
+            if name:
+                query = query.filter(Activity.name.ilike(f"%{name}%"))
         if wbs_id:
             query = query.filter(Activity.wbs_id == wbs_id)
         if status:
@@ -112,6 +129,21 @@ class ActivityRepository:
                     remaining_duration=a.remaining_duration,
                     percent_complete=a.percent_complete,
                     calendar=a.calendar,
+                    location_code=a.location_code,
+                    discipline=a.discipline,
+                    contractor_name=a.contractor_name,
+                    planned_quantity=a.planned_quantity,
+                    quantity_unit=a.quantity_unit,
+                    early_start=a.early_start,
+                    early_finish=a.early_finish,
+                    late_start=a.late_start,
+                    late_finish=a.late_finish,
+                    total_float=a.total_float,
+                    free_float=a.free_float,
+                    is_critical=a.is_critical,
+                    driving_predecessor_id=a.driving_predecessor_id,
+                    constraint_type=a.constraint_type,
+                    constraint_date=a.constraint_date,
                     created_at=a.created_at,
                     updated_at=a.updated_at,
                 )
@@ -130,7 +162,7 @@ class ActivityRepository:
         for field, val in updates.items():
             if hasattr(activity, field) and val is not None:
                 setattr(activity, field, val)
-        activity.updated_at = datetime.utcnow()
+        activity.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.flush()
         return activity
 

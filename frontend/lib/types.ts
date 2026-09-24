@@ -219,6 +219,10 @@ export interface TimeAgentActionCard {
   scope_label?: string | null;
   proposed_status?: string | null;
   target_percent?: number | null;
+  confirm_label?: string | null;
+  reject_label?: string | null;
+  review_label?: string | null;
+  language?: string | null;
 }
 
 export interface TimeAgentMessage {
@@ -234,6 +238,11 @@ export interface TimeAgentConversationSummary {
   project_id: string;
   title: string;
   status: string;
+  is_pinned?: boolean;
+  language?: string | null;
+  conversation_language?: string | null;
+  conversation_style?: string | null;
+  language_locked?: boolean;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -241,11 +250,41 @@ export interface TimeAgentConversationSummary {
   active_event_id?: string | null;
 }
 
+export interface PendingAction {
+  type: "BULK_UPDATE_CONFIRMATION" | "PROPOSAL_CONFIRMATION";
+  proposalId?: string | null;
+  proposal_id?: string | null;
+  status: "PENDING" | "RESOLVING" | "RESOLVED" | "APPLIED" | "CANCELLED";
+  activityCount?: number | null;
+  activity_count?: number | null;
+  targetPercent?: number | null;
+  target_percent?: number | null;
+  bulkActivities?: Array<{
+    activity_id: string;
+    activity_code: string;
+    activity_name: string;
+    current_percent: number;
+    proposed_percent: number;
+  }> | null;
+  bulk_activities?: Array<{
+    activity_id: string;
+    activity_code: string;
+    activity_name: string;
+    current_percent: number;
+    proposed_percent: number;
+  }> | null;
+}
+
 export interface TimeAgentConversation {
   conversation_id: string;
   project_id: string;
   title?: string | null;
   status: string;
+  is_pinned?: boolean;
+  language?: string | null;
+  conversation_language?: string | null;
+  conversation_style?: string | null;
+  language_locked?: boolean;
   active_activity?: {
     activity_id: string;
     activity_code: string;
@@ -257,7 +296,30 @@ export interface TimeAgentConversation {
   clarification_turns: number;
   created_at?: string | null;
   updated_at?: string | null;
+  pending_action?: PendingAction | null;
   history: TimeAgentMessage[];
+}
+
+export interface TimeAgentMessageResponse {
+  message_id: string;
+  sender: string;
+  reply_text: string;
+  action_card?: TimeAgentActionCard;
+  created_at?: string;
+  transcript?: string | null;
+  detected_language?: string | null;
+  conversation_language?: string | null;
+  conversation_style?: string | null;
+  language_locked?: boolean;
+}
+
+export interface TimeAgentVoiceMessageResponse extends TimeAgentMessageResponse {
+  transcript: string;
+  transcription?: string;
+  detected_language?: string | null;
+  detected_languages?: string[];
+  is_code_mixed?: boolean;
+  confidence?: number;
 }
 
 export interface TimeAgentConfirmResponse {
@@ -282,6 +344,21 @@ export interface TimeAgentBulkConfirmResponse {
   }>;
   message: string;
 }
+
+export interface TTSRequest {
+  text: string;
+  language?: string;
+  speaker?: string;
+  model?: string;
+}
+
+export interface TTSResponse {
+  audio_base64: string;
+  content_type: string;
+  language: string;
+  speaker: string;
+}
+
 
 // -------------------------------------------------------------
 // Institutional Memory V1 Types
@@ -437,3 +514,39 @@ export interface HistoricalQueryResponse {
   evidence: EvidenceReference[];
   data_status: "CONFIRMED" | "INSUFFICIENT_DATA" | "NO_RECORDS";
 }
+
+export interface CPMActivityNode {
+  id: string;
+  activity_code: string;
+  name: string;
+  early_start: string | null;
+  early_finish: string | null;
+  late_start: string | null;
+  late_finish: string | null;
+  total_float: number | null;
+  free_float: number | null;
+  is_critical: boolean;
+  is_near_critical: boolean;
+  has_negative_float: boolean;
+  driving_predecessor_id?: string | null;
+  driving_predecessor_code?: string | null;
+}
+
+export interface CPMResult {
+  project_id: string;
+  project_start: string | null;
+  project_finish: string | null;
+  project_duration_days: number;
+  critical_path: string[];
+  critical_activities: string[];
+  near_critical_activities: string[];
+  negative_float_activities: string[];
+  open_start_activities: string[];
+  open_finish_activities: string[];
+  isolated_activities: string[];
+  logic_quality_percent: number;
+  activities: Record<string, CPMActivityNode>;
+  cycles_detected: boolean;
+  error?: string | null;
+}
+

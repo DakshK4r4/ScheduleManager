@@ -29,6 +29,7 @@ router = APIRouter(tags=["Activities"])
 )
 def get_project_activities(
     project_id: str,
+    search: Optional[str] = Query(None, description="Filter across activity code and name substring"),
     activity_code: Optional[str] = Query(None, description="Filter by activity code substring"),
     name: Optional[str] = Query(None, description="Filter by name substring"),
     wbs_id: Optional[str] = Query(None, description="Filter by WBS node UUID"),
@@ -54,6 +55,7 @@ def get_project_activities(
         project_id=project_id,
         activity_code=activity_code,
         name=name,
+        search=search,
         wbs_id=wbs_id,
         status=status_filter,
         start_date_from=start_date_from,
@@ -107,6 +109,21 @@ def get_activity(activity_id: str, db: Session = Depends(get_db)):
         remaining_duration=act.remaining_duration,
         percent_complete=act.percent_complete,
         calendar=act.calendar,
+        location_code=act.location_code,
+        discipline=act.discipline,
+        contractor_name=act.contractor_name,
+        planned_quantity=act.planned_quantity,
+        quantity_unit=act.quantity_unit,
+        early_start=act.early_start,
+        early_finish=act.early_finish,
+        late_start=act.late_start,
+        late_finish=act.late_finish,
+        total_float=act.total_float,
+        free_float=act.free_float,
+        is_critical=act.is_critical,
+        driving_predecessor_id=act.driving_predecessor_id,
+        constraint_type=act.constraint_type,
+        constraint_date=act.constraint_date,
         created_at=act.created_at,
         updated_at=act.updated_at,
     )
@@ -166,6 +183,21 @@ def create_activity(
         remaining_duration=payload.remaining_duration,
         percent_complete=payload.percent_complete or 0.0,
         calendar=payload.calendar,
+        location_code=payload.location_code,
+        discipline=payload.discipline,
+        contractor_name=payload.contractor_name,
+        planned_quantity=payload.planned_quantity,
+        quantity_unit=payload.quantity_unit,
+        early_start=payload.early_start,
+        early_finish=payload.early_finish,
+        late_start=payload.late_start,
+        late_finish=payload.late_finish,
+        total_float=payload.total_float,
+        free_float=payload.free_float,
+        is_critical=payload.is_critical or False,
+        driving_predecessor_id=payload.driving_predecessor_id,
+        constraint_type=payload.constraint_type,
+        constraint_date=payload.constraint_date,
     )
     db.add(act)
     db.commit()
@@ -232,3 +264,103 @@ def delete_activity(activity_id: str, db: Session = Depends(get_db)):
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activity not found.")
     return None
+
+
+@router.get(
+    "/projects/{project_id}/cpm",
+    summary="Calculate deterministic CPM schedule health metrics and critical path",
+)
+def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
+    proj = ProjectRepository.get_by_id(db, project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    from app.repositories.relationship_repo import RelationshipRepository
+    from app.services.cpm_engine import CPMEngine
+
+    activities, _ = ActivityRepository.filter_activities(
+        db=db, project_id=project_id, page=1, page_size=5000
+    )
+    relationships = RelationshipRepository.get_by_project(db, project_id)
+
+    act_dicts = [
+        {
+            "id": a.id,
+            "activity_code": a.activity_code,
+            "name": a.name,
+            "original_duration": a.original_duration or 0.0,
+            "planned_start": a.planned_start,
+            "planned_finish": a.planned_finish,
+            "actual_start": a.actual_start,
+            "actual_finish": a.actual_finish,
+            "calendar": a.calendar,
+        }
+        for a in activities
+    ]
+
+    rel_dicts = [
+        {
+            "id": r.id,
+            "predecessor_id": r.predecessor_id,
+            "successor_id": r.successor_id,
+            "predecessor_code": r.predecessor_code,
+            "successor_code": r.successor_code,
+            "relationship_type": r.relationship_type,
+            "lag": r.lag,
+        }
+        for r in relationships
+    ]
+
+    engine = CPMEngine()
+    result = engine.calculate(
+        activities=act_dicts,
+        relationships=rel_dicts,
+        project_start_date=proj.planned_start.date() if proj.planned_start else None,
+        target_finish_date=proj.planned_finish.date() if proj.planned_finish else None,
+    )
+
+    total_acts = len(activities)
+    missing_logic_count = len(set(result.open_start_activities + result.open_finish_activities))
+    logic_quality = (
+        round(max(0.0, 100.0 - (missing_logic_count / max(1, total_acts) * 100.0)), 1)
+        if total_acts > 0
+        else 100.0
+    )
+
+    act_nodes = {}
+    for node_id, node in result.activities.items():
+        act_nodes[node_id] = {
+            "id": node.id,
+            "activity_code": node.activity_code,
+            "name": node.name,
+            "early_start": node.early_start.isoformat() if node.early_start else None,
+            "early_finish": node.early_finish.isoformat() if node.early_finish else None,
+            "late_start": node.late_start.isoformat() if node.late_start else None,
+            "late_finish": node.late_finish.isoformat() if node.late_finish else None,
+            "total_float": node.total_float,
+            "free_float": node.free_float,
+            "is_critical": node.is_critical,
+            "is_near_critical": node.is_near_critical,
+            "has_negative_float": node.has_negative_float,
+            "driving_predecessor_id": node.driving_predecessor_id,
+            "driving_predecessor_code": node.driving_predecessor_code,
+        }
+
+    return {
+        "project_id": project_id,
+        "project_start": result.project_start.isoformat() if result.project_start else None,
+        "project_finish": result.project_finish.isoformat() if result.project_finish else None,
+        "project_duration_days": result.project_duration_days,
+        "critical_path": result.critical_path,
+        "critical_activities": result.critical_activities,
+        "near_critical_activities": result.near_critical_activities,
+        "negative_float_activities": result.negative_float_activities,
+        "open_start_activities": result.open_start_activities,
+        "open_finish_activities": result.open_finish_activities,
+        "isolated_activities": result.isolated_activities,
+        "logic_quality_percent": logic_quality,
+        "activities": act_nodes,
+        "cycles_detected": result.cycles_detected,
+        "error": result.error,
+    }
+

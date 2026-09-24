@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   UploadCloud,
   FileText,
@@ -16,6 +16,9 @@ import {
   Mic,
   ShieldCheck,
   Download,
+  AlertTriangle,
+  ArrowRight,
+  ChevronRight,
 } from "lucide-react";
 import {
   uploadFieldArtifact,
@@ -28,6 +31,8 @@ import {
   getExportXerUrl,
 } from "@/lib/api";
 import { Artifact, ReviewQueueItem, AuditLogItem } from "@/lib/types";
+import StatusBadge from "./ui/StatusBadge";
+import EmptyState from "./ui/EmptyState";
 
 interface FieldReportsAndReviewProps {
   projectId: string;
@@ -49,17 +54,22 @@ export default function FieldReportsAndReview({
   const [uploading, setUploading] = useState(false);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Processing state
   const [extracting, setExtracting] = useState(false);
   const [matching, setMatching] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [autoProcess, setAutoProcess] = useState(true);
 
   // Review decision state for each item
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [adjustPercents, setAdjustPercents] = useState<Record<string, string>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [submittingReview, setSubmittingReview] = useState<Record<string, boolean>>({});
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const reviewQueueRef = useRef<HTMLDivElement>(null);
 
   const refreshAll = async () => {
     setLoading(true);
@@ -85,10 +95,8 @@ export default function FieldReportsAndReview({
     }
   }, [projectId]);
 
-  const [autoProcess, setAutoProcess] = useState(true);
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpload = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!selectedFile) return;
 
     setUploading(true);
@@ -103,21 +111,23 @@ export default function FieldReportsAndReview({
       setReportId("");
 
       if (autoProcess) {
-        setUploadSuccessMsg("Uploaded to MinIO. Running extraction and matching...");
+        setUploadSuccessMsg("Saved to MinIO. Extracting field events and evaluating CPM matches...");
         setExtracting(true);
         try {
           const extRes = await extractArtifact(artId);
           setMatching(true);
           const matchRes = await evaluateMatching(projectId);
           setActionMessage(
-            `Automated Pipeline Complete: Extracted ${extRes.events_extracted} event(s) | ${matchRes.auto_linked_count} auto-linked, ${matchRes.review_queued_count} queued for review.`
+            `Pipeline Execution Complete: Extracted ${extRes.events_extracted} event(s) | ${matchRes.auto_linked_count} auto-linked to CPM, ${matchRes.review_queued_count} queued for review.`
           );
           setUploadSuccessMsg(
             `Artifact saved in MinIO (${res.artifact.original_filename}) • ${extRes.events_extracted} events extracted & matched!`
           );
           onScheduleUpdated();
         } catch (pipeErr: any) {
-          setActionMessage(`Uploaded to MinIO, but automated extraction/matching encountered: ${pipeErr.message}. You can retry using the buttons below.`);
+          setActionMessage(
+            `Uploaded to MinIO, but automated extraction/matching encountered: ${pipeErr.message}. You can retry using the buttons below.`
+          );
         } finally {
           setExtracting(false);
           setMatching(false);
@@ -141,15 +151,9 @@ export default function FieldReportsAndReview({
     setActionMessage(null);
     try {
       const res = await extractArtifact(artId, forceReextract);
-      if (forceReextract) {
-        setActionMessage(
-          `Re-extraction complete: ${res.events_extracted} structured execution event(s) parsed fresh from MinIO.`
-        );
-      } else {
-        setActionMessage(
-          `Artifact verified: ${res.events_extracted} event(s) loaded (already extracted, duplicate creation prevented).`
-        );
-      }
+      setActionMessage(
+        `Extraction complete: Extracted ${res.events_extracted} progress event(s) from document.`
+      );
       await refreshAll();
     } catch (err: any) {
       setActionMessage(`Extraction failed: ${err.message}`);
@@ -164,7 +168,7 @@ export default function FieldReportsAndReview({
     try {
       const res = await evaluateMatching(projectId);
       setActionMessage(
-        `Matching complete: ${res.auto_linked_count} auto-linked, ${res.review_queued_count} placed in Planner Review.`
+        `Matching complete: ${res.auto_linked_count} auto-linked to CPM activities, ${res.review_queued_count} queued for human review.`
       );
       onScheduleUpdated();
       await refreshAll();
@@ -177,132 +181,232 @@ export default function FieldReportsAndReview({
 
   const handleDecision = async (
     eventId: string,
-    decision: "APPROVED" | "REJECTED",
-    defaultActivityId?: string
+    decision: "APPROVED" | "REJECTED" | "REASSIGNED"
   ) => {
-    const actId = selectedCandidates[eventId] || defaultActivityId;
-    const adjStr = adjustPercents[eventId];
-    const adjPct = adjStr ? parseFloat(adjStr) : undefined;
-    const notes = reviewNotes[eventId] || "";
-
     setSubmittingReview((prev) => ({ ...prev, [eventId]: true }));
     try {
+      const actId = selectedCandidates[eventId] || undefined;
+      const adjStr = adjustPercents[eventId];
+      const adjVal = adjStr ? parseFloat(adjStr) : undefined;
+      const notes = reviewNotes[eventId];
+
       await submitReviewDecision({
         event_id: eventId,
         decision,
         activity_id: actId,
-        adjustment_percent: adjPct,
-        reviewer_id: "planner-user",
+        adjustment_percent: adjVal,
+        reviewer_id: "lead-planner",
         notes,
       });
+
       onScheduleUpdated();
       await refreshAll();
     } catch (err: any) {
-      alert(`Decision error: ${err.message}`);
+      alert(`Review decision failed: ${err.message}`);
     } finally {
       setSubmittingReview((prev) => ({ ...prev, [eventId]: false }));
     }
   };
 
+  // Pipeline counts
+  const uploadedCount = artifacts.length;
+  const extractedCount = artifacts.filter(
+    (a) => a.extraction_status === "EXTRACTED" || a.extraction_status === "PROCESSED" || a.extraction_status === "COMPLETED"
+  ).length;
+  const reviewCount = queueItems.length;
+  const appliedCount = auditLogs.filter(
+    (a) => a.action === "PROGRESS_APPLIED" || a.action === "SCHEDULE_UPDATE" || a.action?.includes("APPLY")
+  ).length;
+  const matchedCount = Math.max(0, extractedCount - reviewCount);
+
+  const scrollToReview = () => {
+    reviewQueueRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Action Notification Banner */}
-      {actionMessage && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs font-semibold text-blue-900 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-blue-600" />
-            {actionMessage}
+    <div className="space-y-6">
+      {/* 1. Execution Pipeline Status Strip */}
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-2xs">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3">
+          Field Execution Pipeline
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="p-3 bg-slate-50 rounded-md border border-slate-100">
+            <div className="text-[10px] font-semibold uppercase text-slate-400">1. Uploaded</div>
+            <div className="mt-1 text-xl font-bold font-mono text-slate-900">{uploadedCount}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">Artifacts in MinIO</div>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-md border border-slate-100">
+            <div className="text-[10px] font-semibold uppercase text-slate-400">2. Extracted</div>
+            <div className="mt-1 text-xl font-bold font-mono text-blue-600">{extractedCount}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">LLM Event Parsing</div>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-md border border-slate-100">
+            <div className="text-[10px] font-semibold uppercase text-slate-400">3. Matched</div>
+            <div className="mt-1 text-xl font-bold font-mono text-indigo-600">{matchedCount}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">Multi-signal linking</div>
+          </div>
+
+          <div className="p-3 bg-amber-50/60 rounded-md border border-amber-200">
+            <div className="text-[10px] font-semibold uppercase text-amber-700">4. Review Queue</div>
+            <div className="mt-1 text-xl font-bold font-mono text-amber-800">{reviewCount}</div>
+            <div className="text-[10px] text-amber-600 mt-0.5">Awaiting decision</div>
+          </div>
+
+          <div className="p-3 bg-emerald-50/60 rounded-md border border-emerald-200">
+            <div className="text-[10px] font-semibold uppercase text-emerald-700">5. Applied</div>
+            <div className="mt-1 text-xl font-bold font-mono text-emerald-800">{appliedCount}</div>
+            <div className="text-[10px] text-emerald-600 mt-0.5">Committed to CPM</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Priority Attention Required Banner */}
+      {reviewCount > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-2xs">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                Attention Required: {reviewCount} Ambiguous Field Events
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Automated multi-signal matching flagged candidate conflicts or sub-threshold confidence scores. Review required before updating CPM network.
+              </p>
+            </div>
           </div>
           <button
-            onClick={() => setActionMessage(null)}
-            className="text-blue-500 hover:text-blue-800"
+            onClick={scrollToReview}
+            className="rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 text-xs font-semibold shadow-2xs transition-colors shrink-0 self-start sm:self-auto"
           >
+            Review Now ↓
+          </button>
+        </div>
+      )}
+
+      {/* Action Messages */}
+      {actionMessage && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+            <span>{actionMessage}</span>
+          </div>
+          <button onClick={() => setActionMessage(null)} className="text-blue-500 hover:text-blue-700">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {/* Top Controls: Upload & Pipeline Trigger */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Upload Card */}
-        <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="rounded-lg bg-blue-50 p-2 text-blue-600 border border-blue-100">
-                <UploadCloud className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Ingest Field Execution Artifact
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Store PDF reports, contractor spreadsheets, or voice memos permanently in MinIO.
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              MinIO S3 Storage
-            </span>
+      {/* 3. Ingestion & Pipeline Actions Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Upload Dropzone */}
+        <div className="lg:col-span-2 rounded-lg border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+              Upload Field Report &amp; Evidence
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Ingest PDF daily logs, XLSX progress sheets, CSV registers, or site supervisor audio
+            </p>
           </div>
 
-          <form onSubmit={handleUpload} className="space-y-3 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Select Field Report (PDF / Excel / CSV / Audio)
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  accept=".pdf,.xlsx,.xls,.csv,.m4a,.mp3,.wav,.ogg"
-                  required
-                />
-              </div>
+          <form onSubmit={handleUpload} className="space-y-4">
+            {/* Drag & Drop Target */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragOver(true);
+              }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  setSelectedFile(e.dataTransfer.files[0]);
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                isDragOver
+                  ? "border-blue-500 bg-blue-50/50"
+                  : selectedFile
+                  ? "border-emerald-400 bg-emerald-50/30"
+                  : "border-slate-300 hover:border-blue-400 hover:bg-slate-50/50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.xlsx,.csv,.xls,.mp3,.wav,.m4a,.webm"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setSelectedFile(e.target.files[0]);
+                  }
+                }}
+              />
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Daily Report Grouping ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={reportId}
-                  onChange={(e) => setReportId(e.target.value)}
-                  placeholder="e.g. rep-2026-09-18"
-                  className="w-full text-xs rounded-lg border border-slate-200 px-3 py-1.5 focus:border-blue-500 focus:outline-none"
-                />
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                  <UploadCloud className="h-5 w-5" />
+                </div>
+                {selectedFile ? (
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 font-mono">
+                      {selectedFile.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {(selectedFile.size / 1024).toFixed(1)} KB • Ready to upload
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">
+                      Drag &amp; drop field report, or click to browse
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Supports PDF, Excel (.xlsx/.xls), CSV, and audio recordings
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={!selectedFile || uploading}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 transition-colors flex items-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Processing...
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="h-3.5 w-3.5" />
-                      {autoProcess ? "Upload & Auto-Process" : "Upload to MinIO"}
-                    </>
-                  )}
-                </button>
-
-                <label className="flex items-center gap-1.5 text-xs text-slate-600 select-none cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoProcess}
-                    onChange={(e) => setAutoProcess(e.target.checked)}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>Auto-extract & match immediately</span>
-                </label>
+            {/* Optional Report ID & Auto-Process */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-1 max-w-xs">
+                <span className="text-slate-500 shrink-0">Report ID:</span>
+                <input
+                  type="text"
+                  placeholder="Optional (e.g. DSR-2026-09-23)"
+                  value={reportId}
+                  onChange={(e) => setReportId(e.target.value)}
+                  className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 w-full font-mono"
+                />
               </div>
+
+              <label className="flex items-center gap-2 text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoProcess}
+                  onChange={(e) => setAutoProcess(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Auto-extract &amp; match immediately</span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="submit"
+                disabled={!selectedFile || uploading}
+                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-blue-500 disabled:opacity-50 transition-colors"
+              >
+                <UploadCloud className="h-4 w-4" />
+                <span>{uploading ? "Ingesting..." : "Upload & Ingest to MinIO"}</span>
+              </button>
 
               {uploadSuccessMsg && (
                 <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
@@ -313,83 +417,78 @@ export default function FieldReportsAndReview({
           </form>
         </div>
 
-        {/* Pipeline Control Card */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+        {/* Pipeline Controls & Export */}
+        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-2xs flex flex-col justify-between space-y-4">
           <div>
-            <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
-              <Sliders className="h-5 w-5 text-indigo-600" />
-              Pipeline Operations
+            <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
+              <Sliders className="h-4 w-4 text-indigo-600" />
+              <span>Pipeline Operations</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Trigger asynchronous extraction and multi-signal CPM matching.
+            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+              Trigger asynchronous LLM extraction, evaluate multi-signal CPM matching, and export updated schedules.
             </p>
           </div>
 
           <div className="space-y-2.5">
             {activeArtifactId && (
               <button
-                onClick={() => {
-                  const isExtracted = artifacts.find((x) => x.artifact_id === activeArtifactId)?.extraction_status === "EXTRACTED";
-                  if (isExtracted) {
-                    if (window.confirm("This artifact has already been extracted. Re-extract fresh with the LLM? (Unapproved events will be refreshed cleanly)")) {
-                      handleRunExtraction(activeArtifactId, true);
-                    }
-                  } else {
-                    handleRunExtraction(activeArtifactId, false);
-                  }
-                }}
+                onClick={() => handleRunExtraction(activeArtifactId, true)}
                 disabled={extracting}
-                className="w-full rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full rounded-md bg-indigo-50 border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${extracting ? "animate-spin" : ""}`} />
-                {artifacts.find((x) => x.artifact_id === activeArtifactId)?.extraction_status === "EXTRACTED"
-                  ? "Re-extract Stored Artifact"
-                  : "Extract Stored Artifact"}
+                <span>Re-extract Active Artifact</span>
               </button>
             )}
 
             <button
               onClick={handleRunMatching}
               disabled={matching}
-              className="w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+              className="w-full rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-2xs"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${matching ? "animate-spin" : ""}`} />
-              Run Matching & Auto-Link
+              <span>Run Matching &amp; Auto-Link</span>
             </button>
 
             <a
               href={getExportXerUrl(projectId)}
               download
-              className="w-full rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 flex items-center justify-center gap-2"
+              className="w-full rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 flex items-center justify-center gap-2"
             >
               <Download className="h-3.5 w-3.5" />
-              Export Updated P6 (.XER)
+              <span>Export Updated P6 (.XER)</span>
             </a>
           </div>
         </div>
       </div>
 
-      {/* Planner Review Queue Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+      {/* 4. Human Review Queue Section */}
+      <div ref={reviewQueueRef} className="space-y-4 pt-2">
+        <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-slate-900">Planner Human Review Queue</h3>
+            <h3 className="text-base font-bold text-slate-900">
+              Planner Verification Queue
+            </h3>
             <span className="rounded-full bg-amber-100 border border-amber-200 text-amber-800 font-mono text-xs px-2.5 py-0.5 font-bold">
               {queueItems.length} Ambiguous
             </span>
           </div>
+
           <button
             onClick={refreshAll}
             className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"
           >
-            <RefreshCw className="h-3 w-3" /> Refresh
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin text-blue-600" : ""}`} />
+            <span>Refresh Queue</span>
           </button>
         </div>
 
         {queueItems.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-400">
-            No pending ambiguous events in review queue. All field progress has been processed or auto-linked.
-          </div>
+          <EmptyState
+            icon={CheckCircle2}
+            title="Review Queue Clear"
+            description="No pending ambiguous events. All verified field progress has been processed or auto-linked to CPM activities."
+          />
         ) : (
           <div className="space-y-4">
             {queueItems.map((item) => {
@@ -400,14 +499,14 @@ export default function FieldReportsAndReview({
               return (
                 <div
                   key={ev.event_id}
-                  className="rounded-xl border border-amber-200 bg-amber-50/30 p-5 space-y-4 shadow-sm"
+                  className="rounded-lg border border-amber-200 bg-amber-50/20 p-5 space-y-4 shadow-2xs"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-amber-100 pb-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
                         {ev.source_document_name}
                       </span>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-500 font-mono">
                         Date: {ev.execution_date} | Page {ev.page_number}
                       </span>
                     </div>
@@ -425,14 +524,20 @@ export default function FieldReportsAndReview({
                   </div>
 
                   {/* Verbatim Excerpt */}
-                  <div className="rounded-lg bg-white p-3 border border-slate-200 text-xs">
+                  <div className="rounded-md bg-white p-3 border border-slate-200 text-xs">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Verbatim Field Report Excerpt
                     </div>
-                    <div className="font-mono text-slate-800">{ev.verbatim_excerpt}</div>
+                    <div className="font-mono text-slate-800 leading-relaxed">
+                      {ev.verbatim_excerpt}
+                    </div>
                     {ev.quantity && (
-                      <div className="mt-1 text-slate-500 text-[11px]">
-                        Reported Quantity: <strong className="text-slate-700">{ev.quantity} {ev.unit}</strong> | Location: <strong className="text-slate-700">{ev.location || "N/A"}</strong>
+                      <div className="mt-1.5 text-slate-500 text-[11px] font-mono">
+                        Reported Quantity:{" "}
+                        <strong className="text-slate-800">
+                          {ev.quantity} {ev.unit}
+                        </strong>{" "}
+                        | Location: <strong className="text-slate-800">{ev.location || "N/A"}</strong>
                       </div>
                     )}
                   </div>
@@ -440,7 +545,7 @@ export default function FieldReportsAndReview({
                   {/* Candidate Selection */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Candidate Activities & Confidence Breakdown
+                      Candidate Activities &amp; Match Confidence Scores:
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {item.candidates.map((cand) => {
@@ -456,34 +561,33 @@ export default function FieldReportsAndReview({
                                 [ev.event_id]: cand.activity_id,
                               }))
                             }
-                            className={`cursor-pointer rounded-lg p-3 text-xs border transition-colors ${
+                            className={`p-3 rounded-md border text-xs cursor-pointer transition-all ${
                               isSelected
-                                ? "border-blue-500 bg-blue-50/50 shadow-sm"
-                                : "border-slate-200 bg-white hover:border-slate-300"
+                                ? "border-blue-500 bg-blue-50/50 shadow-2xs"
+                                : "border-slate-200 bg-white hover:bg-slate-50"
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-mono font-bold text-slate-800">
+                              <span className="font-mono font-bold text-slate-900">
                                 {cand.activity_code}
                               </span>
                               <span
-                                className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
-                                  cand.match_score >= 0.85
+                                className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                                  cand.match_score >= 0.8
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-amber-100 text-amber-800"
                                 }`}
                               >
-                                Score: {Math.round(cand.match_score * 100)}%
+                                {Math.round(cand.match_score * 100)}% Match
                               </span>
                             </div>
-                            <div className="font-semibold text-slate-700 mt-1">
+                            <div className="font-medium text-slate-700 mt-1 truncate">
                               {cand.activity_name}
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-1 flex gap-2">
-                              <span>Text: {cand.score_breakdown.s_text}</span>
-                              <span>WBS: {cand.score_breakdown.s_wbs}</span>
-                              <span>Temp: {cand.score_breakdown.s_temp}</span>
-                              <span>Ctx: {cand.score_breakdown.s_context}</span>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Signal Breakdown: Text {cand.score_breakdown?.semantic_text || "-"} | WBS{" "}
+                              {cand.score_breakdown?.wbs_context || "-"} | Discipline{" "}
+                              {cand.score_breakdown?.discipline_match || "-"}
                             </div>
                           </div>
                         );
@@ -491,64 +595,51 @@ export default function FieldReportsAndReview({
                     </div>
                   </div>
 
-                  {/* Planner Actions */}
+                  {/* Decision Controls: Approve, Reassign, Reject */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-amber-100">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-600 block">
-                          Adjust Progress % (Optional)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="e.g. 50"
-                          min="0"
-                          max="100"
-                          value={adjustPercents[ev.event_id] || ""}
-                          onChange={(e) =>
-                            setAdjustPercents((prev) => ({
-                              ...prev,
-                              [ev.event_id]: e.target.value,
-                            }))
-                          }
-                          className="w-24 text-xs rounded border border-slate-300 px-2 py-1"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-600 block">
-                          Reviewer Notes
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Sign-off justification..."
-                          value={reviewNotes[ev.event_id] || ""}
-                          onChange={(e) =>
-                            setReviewNotes((prev) => ({
-                              ...prev,
-                              [ev.event_id]: e.target.value,
-                            }))
-                          }
-                          className="w-48 sm:w-64 text-xs rounded border border-slate-300 px-2 py-1"
-                        />
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Progress Override:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        placeholder="%"
+                        value={adjustPercents[ev.event_id] || ""}
+                        onChange={(e) =>
+                          setAdjustPercents((prev) => ({
+                            ...prev,
+                            [ev.event_id]: e.target.value,
+                          }))
+                        }
+                        className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-mono"
+                      />
                     </div>
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleDecision(ev.event_id, "REJECTED")}
+                        onClick={() => handleDecision(ev.event_id, "APPROVED")}
                         disabled={isSubmitting}
-                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50 flex items-center gap-1"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs disabled:opacity-50 transition-colors"
                       >
-                        <X className="h-3.5 w-3.5" /> Reject Match
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Approve &amp; Apply</span>
                       </button>
 
                       <button
-                        onClick={() =>
-                          handleDecision(ev.event_id, "APPROVED", topCand?.activity_id)
-                        }
+                        onClick={() => handleDecision(ev.event_id, "REASSIGNED")}
                         disabled={isSubmitting}
-                        className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50 flex items-center gap-1 shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs disabled:opacity-50 transition-colors"
                       >
-                        <Check className="h-3.5 w-3.5" /> Approve & Update Schedule
+                        <span>Reassign</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDecision(ev.event_id, "REJECTED")}
+                        disabled={isSubmitting}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-slate-200 hover:bg-rose-100 hover:text-rose-700 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs disabled:opacity-50 transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Reject</span>
                       </button>
                     </div>
                   </div>
@@ -559,167 +650,59 @@ export default function FieldReportsAndReview({
         )}
       </div>
 
-      {/* Stored Artifacts Repository */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-bold text-slate-900">Stored MinIO Field Artifacts</h3>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">Artifact File</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">SHA-256 Digest</th>
-                <th className="px-4 py-3">Size</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {artifacts.length === 0 ? (
+      {/* 5. Ingested Artifacts History */}
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+          Stored Evidence Artifacts (MinIO S3)
+        </h4>
+
+        {artifacts.length === 0 ? (
+          <p className="text-xs text-slate-400 py-4 text-center">
+            No artifacts ingested for this project.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-400 border-b border-slate-200">
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-slate-400">
-                    No field artifacts stored yet.
-                  </td>
+                  <th className="px-3 py-2">Filename</th>
+                  <th className="px-3 py-2">SHA-256 Digest</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Uploaded</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
-              ) : (
-                artifacts.map((a) => (
-                  <tr key={a.artifact_id} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 font-semibold text-slate-900 flex items-center gap-2">
-                      {a.artifact_type === "PDF_REPORT" ? (
-                        <FileText className="h-4 w-4 text-red-500" />
-                      ) : a.artifact_type === "VOICE_MEMO" ? (
-                        <Mic className="h-4 w-4 text-purple-500" />
-                      ) : (
-                        <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
-                      )}
-                      {a.original_filename}
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                {artifacts.map((art) => (
+                  <tr key={art.artifact_id} className="hover:bg-slate-50/50">
+                    <td className="px-3 py-2 font-bold text-slate-900 font-sans">
+                      {art.original_filename}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[10px] text-slate-500">
-                      {a.artifact_type}
+                    <td className="px-3 py-2 text-slate-400 truncate max-w-xs">
+                      {art.sha256}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[10px] text-slate-500">
-                      {a.sha256.substring(0, 16)}...
+                    <td className="px-3 py-2">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700 font-semibold uppercase">
+                        {art.extraction_status}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {(a.size_bytes / 1024).toFixed(1)} KB
+                    <td className="px-3 py-2 text-slate-500">
+                      {art.uploaded_at ? new Date(art.uploaded_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          a.extraction_status === "EXTRACTED"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : a.extraction_status === "PROCESSING"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
-                            : "bg-slate-100 text-slate-700 border border-slate-200"
-                        }`}
+                    <td className="px-3 py-2 text-right font-sans">
+                      <button
+                        onClick={() => handleRunExtraction(art.artifact_id, true)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800"
                       >
-                        {a.extraction_status === "EXTRACTED" && <Check className="h-3 w-3" />}
-                        {a.extraction_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {a.extraction_status === "EXTRACTED" ? (
-                        <div className="inline-flex items-center gap-2 justify-end">
-                          <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                            <Check className="h-3 w-3" /> Extracted
-                          </span>
-                          <button
-                            onClick={() => {
-                              if (window.confirm("Re-extract this report with the LLM? This will refresh all unapproved events and prevent duplicates.")) {
-                                handleRunExtraction(a.artifact_id, true);
-                              }
-                            }}
-                            className="text-[10px] text-slate-400 hover:text-blue-600 underline font-medium transition-colors"
-                            title="Re-run LLM extraction fresh from MinIO"
-                          >
-                            Re-extract
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => handleRunExtraction(a.artifact_id, false)}
-                          className="font-bold text-blue-600 hover:text-blue-800 text-[11px]"
-                        >
-                          Extract
-                        </button>
-                      )}
+                        Re-extract
+                      </button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Forensic Audit Trail */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-600" />
-            <h3 className="text-lg font-bold text-slate-900">Forensic Audit Trail & Schedule Lineage</h3>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <span className="text-xs text-slate-400">
-            {auditLogs.length} Verified Mutations
-          </span>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">Timestamp</th>
-                <th className="px-4 py-3">Activity</th>
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Authorized By</th>
-                <th className="px-4 py-3">Source MinIO Evidence Artifact</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {auditLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-400">
-                    No schedule mutations recorded yet.
-                  </td>
-                </tr>
-              ) : (
-                auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 font-mono text-[10px] text-slate-500">
-                      {new Date(log.timestamp).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-mono font-bold text-slate-800">
-                        {log.activity_code || log.activity_id}
-                      </div>
-                      <div className="text-[11px] text-slate-500">{log.activity_name}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-700 font-semibold">{log.user_id}</td>
-                    <td className="px-4 py-3">
-                      {log.artifact ? (
-                        <div>
-                          <div className="font-semibold text-slate-800">
-                            {log.artifact.original_filename}
-                          </div>
-                          <div className="font-mono text-[10px] text-slate-400">
-                            {log.artifact.storage_key}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">Manual mutation</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        )}
       </div>
     </div>
   );

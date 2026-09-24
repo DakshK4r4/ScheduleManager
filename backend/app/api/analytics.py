@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
@@ -198,7 +198,7 @@ def export_memory_ledger(
         to_date=to_date,
     )
 
-    now_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"institutional_memory_{proj.project_code}_{now_str}.csv"
 
     return Response(

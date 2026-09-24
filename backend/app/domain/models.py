@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -24,6 +25,10 @@ class Base(DeclarativeBase):
     pass
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -35,9 +40,9 @@ class Project(Base):
     planned_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     planned_finish: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     data_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -84,7 +89,7 @@ class WBSNode(Base):
     )
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="wbs_nodes")
@@ -145,9 +150,21 @@ class Activity(Base):
     contractor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     planned_quantity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quantity_unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    early_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    early_finish: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    late_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    late_finish: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    total_float: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    free_float: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_critical: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    driving_predecessor_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("activities.id", ondelete="SET NULL"), nullable=True
+    )
+    constraint_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    constraint_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -209,7 +226,7 @@ class ActivityRelationship(Base):
         String(10), nullable=False, default="FS"
     )
     lag: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="relationships")
@@ -263,7 +280,7 @@ class Artifact(Base):
     uploaded_by: Mapped[str] = mapped_column(
         String(100), nullable=False, default="site-user"
     )
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     extraction_status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="UPLOADED"
     )  # 'UPLOADED', 'EXTRACTING', 'EXTRACTED', 'FAILED'
@@ -349,7 +366,7 @@ class ExecutionEvent(Base):
     )
     match_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     match_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     artifact: Mapped[Optional[Artifact]] = relationship("Artifact", back_populates="execution_events")
@@ -405,7 +422,7 @@ class ReviewDecision(Base):
     )  # 'APPROVED', 'REJECTED', 'REASSIGNED'
     adjustment_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     execution_event: Mapped[ExecutionEvent] = relationship(
@@ -444,7 +461,7 @@ class ActualProgressLedger(Base):
     unit_of_measure: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     incremental_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     cumulative_percent: Mapped[float] = mapped_column(Float, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     activity: Mapped[Activity] = relationship("Activity", back_populates="progress_records")
@@ -489,7 +506,7 @@ class ScheduleAuditLog(Base):
     previous_state: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     new_state: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class DomainOutbox(Base):
@@ -504,7 +521,7 @@ class DomainOutbox(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="PENDING"
     )  # PENDING, PROCESSED, FAILED
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -536,9 +553,13 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="ACTIVE", index=True
     )  # ACTIVE, WAITING_FOR_USER, RESOLVED, ABANDONED
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    language: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default=None)
+    language_style: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default=None)
+    language_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -582,7 +603,7 @@ class ConversationMessage(Base):
     sender: Mapped[str] = mapped_column(String(50), nullable=False)  # USER, AGENT, SYSTEM
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
     # Relationships
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
@@ -623,7 +644,7 @@ class UpdateProposal(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="PENDING", index=True
     )  # PENDING, CONFIRMED, CONSUMED, REJECTED, EXPIRED
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     confirmed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

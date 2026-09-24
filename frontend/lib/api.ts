@@ -12,6 +12,8 @@ import {
   TimeAgentConversation,
   TimeAgentConversationSummary,
   TimeAgentMessage,
+  TimeAgentMessageResponse,
+  TimeAgentVoiceMessageResponse,
   ValidationErrorDetail,
   WBSNode,
   WBSTreeNode,
@@ -22,6 +24,9 @@ import {
   InstitutionalMemorySummary,
   PlanningBenchmark,
   ProductivityMetric,
+  CPMResult,
+  TTSRequest,
+  TTSResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -117,6 +122,12 @@ export async function fetchActivities(
   const res = await fetch(`${API_BASE}/projects/${projectId}/activities?${query.toString()}`);
   return handleResponse<PaginatedResponse<Activity>>(res);
 }
+
+export async function fetchProjectCPM(projectId: string): Promise<CPMResult> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/cpm`);
+  return handleResponse<CPMResult>(res);
+}
+
 
 export async function createActivity(projectId: string, data: Partial<Activity>): Promise<Activity> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/activities`, {
@@ -276,6 +287,37 @@ export async function getAgentConversation(
   return handleResponse<TimeAgentConversation>(res);
 }
 
+export async function pinAgentConversation(
+  projectId: string,
+  conversationId: string,
+  isPinned: boolean
+): Promise<TimeAgentConversationSummary> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/projects/${projectId}/agent/conversations/${conversationId}/pin`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ is_pinned: isPinned }),
+    }
+  );
+  return handleResponse<TimeAgentConversationSummary>(res);
+}
+
+export async function deleteAgentConversation(
+  projectId: string,
+  conversationId: string
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/projects/${projectId}/agent/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+    }
+  );
+  return handleResponse<{ success: boolean; message: string }>(res);
+}
+
 export async function startOrGetConversation(
   projectId: string,
   activeActivityId?: string,
@@ -303,7 +345,7 @@ export async function sendAgentMessage(
   conversationId: string,
   content: string,
   userId: string = "site-supervisor"
-): Promise<{ message_id: string; sender: string; reply_text: string; action_card?: TimeAgentActionCard; created_at?: string }> {
+): Promise<TimeAgentMessageResponse> {
   const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/agent/conversations/${conversationId}/messages`, {
     method: "POST",
     headers: {
@@ -312,8 +354,46 @@ export async function sendAgentMessage(
     },
     body: JSON.stringify({ content }),
   });
-  return handleResponse<{ message_id: string; sender: string; reply_text: string; action_card?: TimeAgentActionCard; created_at?: string }>(res);
+  return handleResponse<TimeAgentMessageResponse>(res);
 }
+
+export async function sendAgentVoiceMessage(
+  projectId: string,
+  conversationId: string,
+  audioBlob: Blob,
+  fileName: string = "recording.webm",
+  userId: string = "site-supervisor",
+  signal?: AbortSignal
+): Promise<TimeAgentVoiceMessageResponse> {
+  const formData = new FormData();
+  formData.append("file", audioBlob, fileName);
+
+  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/agent/conversations/${conversationId}/voice`, {
+    method: "POST",
+    headers: {
+      "X-User-ID": userId,
+    },
+    body: formData,
+    signal,
+  });
+  return handleResponse<TimeAgentVoiceMessageResponse>(res);
+}
+
+export async function generateTTS(
+  payload: TTSRequest,
+  signal?: AbortSignal
+): Promise<TTSResponse> {
+  const res = await fetch(`${API_BASE}/api/tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  return handleResponse<TTSResponse>(res);
+}
+
 
 export async function uploadAgentAttachment(
   projectId: string,

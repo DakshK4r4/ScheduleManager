@@ -19,6 +19,21 @@ class ActivityBase(BaseModel):
     remaining_duration: Optional[float] = None
     percent_complete: Optional[float] = Field(0.0, description="0 to 100")
     calendar: Optional[str] = None
+    location_code: Optional[str] = None
+    discipline: Optional[str] = None
+    contractor_name: Optional[str] = None
+    planned_quantity: Optional[float] = None
+    quantity_unit: Optional[str] = None
+    early_start: Optional[datetime] = None
+    early_finish: Optional[datetime] = None
+    late_start: Optional[datetime] = None
+    late_finish: Optional[datetime] = None
+    total_float: Optional[float] = None
+    free_float: Optional[float] = None
+    is_critical: Optional[bool] = False
+    driving_predecessor_id: Optional[str] = None
+    constraint_type: Optional[str] = None
+    constraint_date: Optional[datetime] = None
 
     @field_validator("percent_complete")
     @classmethod
@@ -46,6 +61,21 @@ class ActivityUpdate(BaseModel):
     remaining_duration: Optional[float] = None
     percent_complete: Optional[float] = None
     calendar: Optional[str] = None
+    location_code: Optional[str] = None
+    discipline: Optional[str] = None
+    contractor_name: Optional[str] = None
+    planned_quantity: Optional[float] = None
+    quantity_unit: Optional[str] = None
+    early_start: Optional[datetime] = None
+    early_finish: Optional[datetime] = None
+    late_start: Optional[datetime] = None
+    late_finish: Optional[datetime] = None
+    total_float: Optional[float] = None
+    free_float: Optional[float] = None
+    is_critical: Optional[bool] = None
+    driving_predecessor_id: Optional[str] = None
+    constraint_type: Optional[str] = None
+    constraint_date: Optional[datetime] = None
 
     @field_validator("percent_complete")
     @classmethod

@@ -197,7 +197,7 @@ export default function ActivityEditorModal({
       setRelTargetId("");
       loadRelationships();
     } catch (err: any) {
-      alert(err.message || "Failed to create relationship.");
+      setErrorMessage(err.message || "Failed to create relationship.");
     }
   };
 
@@ -206,7 +206,7 @@ export default function ActivityEditorModal({
       await deleteRelationship(relId);
       loadRelationships();
     } catch (err: any) {
-      alert(err.message || "Failed to delete relationship.");
+      setErrorMessage(err.message || "Failed to delete relationship.");
     }
   };
 

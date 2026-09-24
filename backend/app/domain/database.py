@@ -49,6 +49,20 @@ def init_db():
                     ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS conversation_id VARCHAR(36);
                     ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS message_id VARCHAR(36);
                     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+                    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE;
+                    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS language VARCHAR(20);
+                    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS language_style VARCHAR(50);
+                    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS language_locked BOOLEAN NOT NULL DEFAULT FALSE;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS early_start TIMESTAMP;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS early_finish TIMESTAMP;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS late_start TIMESTAMP;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS late_finish TIMESTAMP;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS total_float FLOAT;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS free_float FLOAT;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS driving_predecessor_id VARCHAR(36);
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS constraint_type VARCHAR(50);
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS constraint_date TIMESTAMP;
                 """))
         except Exception as e:
             import logging

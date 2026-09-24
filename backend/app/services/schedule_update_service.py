@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
@@ -55,13 +55,13 @@ class ScheduleUpdateService:
         existing_ledger = (
             db.query(ActualProgressLedger)
             .filter(
-                ActualProgressLedger.activity_id == activity_id,
+                ActualProgressLedger.activity_id == target_act_id,
                 ActualProgressLedger.execution_event_id == event_id,
             )
             .first()
         )
         if existing_ledger:
-            logger.info(f"Event {event_id} already applied to activity {activity_id}. Returning current activity state.")
+            logger.info(f"Event {event_id} already applied to activity {target_act_id}. Returning current activity state.")
             return activity
 
         # Current state before update
@@ -149,7 +149,7 @@ class ScheduleUpdateService:
 
         activity.percent_complete = new_pct
         activity.status = new_status
-        activity.updated_at = datetime.utcnow()
+        activity.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         new_state_json = json.dumps({
             "percent_complete": activity.percent_complete,

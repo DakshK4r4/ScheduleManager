@@ -72,13 +72,14 @@ services:
       - MINIO_BUCKET=sih-artifacts
       - MINIO_SECURE=false
       - TIME_AGENT_GEMINI_API_KEY=${TIME_AGENT_GEMINI_API_KEY:-}
-      - TIME_AGENT_LLM_MODEL=${TIME_AGENT_LLM_MODEL:-gemini-2.5-flash}
+      - TIME_AGENT_LLM_MODEL=${TIME_AGENT_LLM_MODEL:-gemini-3.6-flash}
       - EXTRACTION_GEMINI_API_KEY=${EXTRACTION_GEMINI_API_KEY:-}
       - EXTRACTION_LLM_MODEL=${EXTRACTION_LLM_MODEL:-gemini-3.5-flash}
       - ALLOW_LEGACY_GEMINI_FALLBACK=${ALLOW_LEGACY_GEMINI_FALLBACK:-true}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-gemini-3.5-flash}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +94,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     container_name: primavera-frontend
     restart: unless-stopped
     ports:

@@ -28,11 +28,27 @@ class ConversationSummaryDTO(BaseModel):
     project_id: str
     title: str
     status: str
+    language: Optional[str] = None
+    conversation_language: Optional[str] = None
+    conversation_style: Optional[str] = None
+    language_locked: bool = False
+    is_pinned: bool = False
     created_at: str
     updated_at: str
     message_count: int = 0
     active_activity_id: Optional[str] = None
     active_event_id: Optional[str] = None
+
+
+class PendingActionDTO(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    type: str  # "BULK_UPDATE_CONFIRMATION", "PROPOSAL_CONFIRMATION"
+    proposal_id: Optional[str] = None
+    status: str = "PENDING"  # "PENDING", "RESOLVING", "RESOLVED"
+    activity_count: Optional[int] = None
+    target_percent: Optional[float] = None
+    bulk_activities: Optional[List[Dict[str, Any]]] = None
 
 
 class ConversationDTO(BaseModel):
@@ -42,12 +58,22 @@ class ConversationDTO(BaseModel):
     project_id: str
     title: Optional[str] = "New Chat"
     status: str
+    language: Optional[str] = None
+    conversation_language: Optional[str] = None
+    conversation_style: Optional[str] = None
+    language_locked: bool = False
+    is_pinned: bool = False
     active_activity: Optional[Dict[str, Any]] = None
     active_event_id: Optional[str] = None
     clarification_turns: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    pending_action: Optional[PendingActionDTO] = None
     history: List[MessageDTO] = []
+
+
+class ConversationPinRequest(BaseModel):
+    is_pinned: bool = True
 
 
 class MessageSendRequest(BaseModel):
@@ -72,6 +98,9 @@ class ActionCardDTO(BaseModel):
     bulk_proposal_id: Optional[str] = None
     bulk_activities: Optional[List[Dict[str, Any]]] = None
     bulk_count: Optional[int] = None
+    confirm_label: Optional[str] = None
+    reject_label: Optional[str] = None
+    review_label: Optional[str] = None
     scope_label: Optional[str] = None
     proposed_status: Optional[str] = None
     target_percent: Optional[float] = None
@@ -83,6 +112,20 @@ class MessageResponseDTO(BaseModel):
     reply_text: str
     action_card: Optional[ActionCardDTO] = None
     created_at: Optional[str] = None
+    transcript: Optional[str] = None
+    detected_language: Optional[str] = None
+    conversation_language: Optional[str] = None
+    conversation_style: Optional[str] = None
+    language_locked: bool = False
+
+
+class VoiceMessageResponseDTO(MessageResponseDTO):
+    transcript: str
+    transcription: Optional[str] = None
+    detected_language: Optional[str] = None
+    detected_languages: Optional[List[str]] = []
+    is_code_mixed: bool = False
+    confidence: Optional[float] = 1.0
 
 
 class AttachmentResponseDTO(BaseModel):
@@ -142,3 +185,19 @@ class ParsedConversationalIntent(BaseModel):
     status_reported: Optional[str] = "IN_PROGRESS"
     override_percent: Optional[float] = None
     description: Optional[str] = None
+    detected_language: Optional[str] = "en"  # "en", "hi", "hinglish"
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., description="Text content to convert to speech", min_length=1)
+    language: Optional[str] = Field("en-IN", description="Language code e.g. en-IN, hi-IN, ta-IN")
+    speaker: Optional[str] = Field(None, description="Preferred Sarvam voice speaker (defaults to shubh for v3)")
+    model: Optional[str] = Field("bulbul:v3", description="Sarvam TTS model, defaults to bulbul:v3")
+
+
+class TTSResponse(BaseModel):
+    audio_base64: str = Field(..., description="Base64 encoded audio bytes")
+    content_type: str = Field("audio/wav", description="Audio MIME format")
+    language: str = Field(..., description="Resolved language code used for synthesis")
+    speaker: str = Field(..., description="Voice speaker used")
+

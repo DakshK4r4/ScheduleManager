@@ -18,8 +18,8 @@ class MatchingService:
     def _tokenize(text: str) -> set[str]:
         if not text:
             return set()
-        clean = re.sub(r"[^\w\s]", " ", text.lower())
-        tokens = {t for t in clean.split() if len(t) > 2}
+        clean = re.sub(r"[^\w\s-]", " ", text.lower())
+        tokens = {t.strip("-") for t in clean.split() if len(t.strip("-")) >= 2}
         return tokens
 
     @classmethod
@@ -50,10 +50,10 @@ class MatchingService:
 
     @classmethod
     def calculate_temporal_score(
-        cls, event_date: datetime, planned_start: Optional[datetime], planned_finish: Optional[datetime]
+        cls, event_date: Optional[datetime], planned_start: Optional[datetime], planned_finish: Optional[datetime]
     ) -> float:
-        if not planned_start or not planned_finish:
-            return 0.5  # Neutral when no planned dates exist
+        if not event_date or not planned_start or not planned_finish:
+            return 0.5  # Neutral when no planned dates or event date exist
 
         # If event falls within planned interval
         if planned_start <= event_date <= planned_finish:
@@ -87,6 +87,21 @@ class MatchingService:
             s_id = 1.0
         elif act_code in verbatim_upper:
             s_id = 1.0
+        else:
+            # Check unhyphenated/spaced variants: e.g. "CIV 1001", "CIV1001", "सिविल 1001", "சிவில் 1001"
+            from app.services.agent_parser import ConversationalParser
+            norm_verbatim = ConversationalParser.normalize_indic_digits(verbatim_upper)
+            act_code_compact = act_code.replace("-", "").replace("_", "").replace(" ", "")
+            act_code_spaced = act_code.replace("-", " ").replace("_", " ")
+            compact_verbatim = norm_verbatim.replace("-", "").replace("_", "").replace(" ", "")
+            spaced_verbatim = norm_verbatim.replace("-", " ").replace("_", " ")
+
+            if act_code_compact in compact_verbatim or act_code_spaced in spaced_verbatim:
+                s_id = 1.0
+            else:
+                extracted = ConversationalParser.extract_activity_code(event.verbatim_excerpt or "")
+                if extracted and extracted.upper() == act_code:
+                    s_id = 1.0
 
         # 2. Text & Token Similarity (S_text)
         s_text = cls.calculate_text_similarity(
@@ -119,10 +134,12 @@ class MatchingService:
 
         # 5. Contextual Alignment (S_context)
         s_context = 0.0
+        exact_location_matched = False
         if event.location:
-            loc_lower = event.location.lower()
-            if loc_lower in activity.name.lower() or (activity.location_code and loc_lower in activity.location_code.lower()):
+            loc_lower = event.location.lower().strip()
+            if loc_lower and (loc_lower in activity.name.lower() or (activity.location_code and loc_lower in activity.location_code.lower())):
                 s_context = 1.0
+                exact_location_matched = True
         if event.contractor and activity.contractor_name:
             if event.contractor.lower() in activity.contractor_name.lower():
                 s_context = min(1.0, s_context + 0.2)
@@ -131,9 +148,12 @@ class MatchingService:
 
         # Weighted combination:
         # If exact activity code is present, S_total is guaranteed >= 0.95.
-        # If activity code is not present, weights normalize across text, wbs, temporal, and contextual signals.
+        # If exact location tag is present (e.g. F-204 in 'Foundation Concrete Pour F-204'), S_total is guaranteed >= 0.88.
+        # If activity code/tag is not present, weights normalize across text, wbs, temporal, and contextual signals.
         if s_id == 1.0:
             s_total = max(0.95, 0.40 * s_id + 0.30 * s_text + 0.15 * s_wbs + 0.10 * s_temp + 0.05 * s_context)
+        elif exact_location_matched:
+            s_total = max(0.88, 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp)
         else:
             # Normalized weights when code is not cited in field narrative: 0.45 text, 0.25 wbs, 0.15 temp, 0.15 context
             s_total = (
@@ -163,14 +183,46 @@ class MatchingService:
 
         activities = query.all()
         # If temporal window filtering produces candidates, prefer them; otherwise fallback to all active
-        event_d = event.execution_date
-        window_start = event_d - timedelta(days=30)
-        window_end = event_d + timedelta(days=30)
+        if event.execution_date:
+            event_d = event.execution_date
+            window_start = event_d - timedelta(days=30)
+            window_end = event_d + timedelta(days=30)
+            in_window = [
+                a for a in activities
+                if not a.planned_start or not a.planned_finish or (a.planned_start <= window_end and a.planned_finish >= window_start)
+            ]
+        else:
+            in_window = list(activities)
 
-        in_window = [
-            a for a in activities
-            if not a.planned_start or not a.planned_finish or (a.planned_start <= window_end and a.planned_finish >= window_start)
-        ]
+        # Always ensure explicitly cited activity code is included among candidates
+        exact_code = (event.reported_activity_code or "").upper().strip()
+        if not exact_code and event.verbatim_excerpt:
+            from app.services.agent_parser import ConversationalParser
+            extracted = ConversationalParser.extract_activity_code(event.verbatim_excerpt)
+            if extracted:
+                exact_code = extracted.upper()
+
+        if exact_code:
+            found = False
+            for a in in_window:
+                if a.activity_code.upper() == exact_code:
+                    found = True
+                    break
+            if not found:
+                for a in activities:
+                    if a.activity_code.upper() == exact_code:
+                        in_window.append(a)
+                        found = True
+                        break
+            if not found:
+                from sqlalchemy import func
+                exact_act = db.query(Activity).filter(
+                    Activity.project_id == event.project_id,
+                    func.upper(Activity.activity_code) == exact_code,
+                ).first()
+                if exact_act:
+                    in_window.append(exact_act)
+
         return in_window if in_window else activities
 
     @classmethod
@@ -224,19 +276,24 @@ class MatchingService:
         is_auto_link = (
             top.match_score >= 0.85
             and margin_delta >= 0.15
-            and event.extraction_confidence >= 0.80
+            and (event.extraction_confidence or 0.0) >= 0.80
         )
 
         route = "AUTO_LINK" if is_auto_link else "PLANNER_REVIEW"
 
         event.matched_activity_id = top.activity_id
         event.match_score = top.match_score
-        event.match_metadata = json.dumps({
+        try:
+            existing_meta = json.loads(event.match_metadata) if event.match_metadata else {}
+        except Exception:
+            existing_meta = {}
+        existing_meta.update({
             "route": route,
             "margin_delta": margin_delta,
             "top_candidate": top.model_dump(),
             "all_scored": [c.model_dump() for c in scored_candidates[:5]],
         })
+        event.match_metadata = json.dumps(existing_meta)
 
         if route == "AUTO_LINK":
             event.status = "AUTO_LINKED"
@@ -301,7 +358,7 @@ class MatchingService:
         is_auto_link = (
             top.match_score >= 0.85
             and margin_delta >= 0.15
-            and event.extraction_confidence >= 0.80
+            and (event.extraction_confidence or 0.85) >= 0.80
         )
 
         route = "AUTO_LINK" if is_auto_link else "PLANNER_REVIEW"
@@ -309,12 +366,17 @@ class MatchingService:
         # Update in-memory match attributes on event without changing status to AUTO_LINKED or calling db.commit()
         event.matched_activity_id = top.activity_id
         event.match_score = top.match_score
-        event.match_metadata = json.dumps({
+        try:
+            existing_meta = json.loads(event.match_metadata) if event.match_metadata else {}
+        except Exception:
+            existing_meta = {}
+        existing_meta.update({
             "route": route,
             "margin_delta": margin_delta,
             "top_candidate": top.model_dump(),
             "all_scored": [c.model_dump() for c in scored_candidates[:5]],
         })
+        event.match_metadata = json.dumps(existing_meta)
 
         return ConfidenceRoutingResultDTO(
             event_id=event.id,

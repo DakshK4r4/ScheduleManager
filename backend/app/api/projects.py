@@ -40,7 +40,7 @@ async def import_schedule(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read upload: {str(e)}")
 
     if not content:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uploaded file is empty.")
+        raise HTTPException(status_code=getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY), detail="Uploaded file is empty.")
 
     return await ImportService.import_schedule_file(
         db=db,

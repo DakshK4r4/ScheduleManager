@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import httpx
 from sqlalchemy.orm import Session
@@ -109,7 +109,7 @@ class ExtractionService:
 
             unit = cls.normalize_unit(ev.get("unit"))
             status = cls.normalize_status(ev.get("status_reported"))
-            date_val = ev.get("execution_date") or datetime.utcnow().strftime("%Y-%m-%d")
+            date_val = ev.get("execution_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
             location = ev.get("location")
             discipline = ev.get("discipline")
 
@@ -294,7 +294,7 @@ FIELD REPORT TEXT:
                         location = loc_match.group(1) if loc_match else None
 
                         # Extract date hint in nearby lines or default to today
-                        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+                        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                         for nearby in lines[max(0, i - 5):min(len(lines), i + 5)]:
                             d_match = re.search(r"(\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})", nearby)
                             if d_match:
@@ -330,7 +330,7 @@ FIELD REPORT TEXT:
                     "bounding_box": [50.0, 50.0, 550.0, 200.0],
                     "verbatim_excerpt": snippet,
                     "description": snippet,
-                    "execution_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "execution_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "quantity": None,
                     "unit": None,
                     "location": None,
@@ -361,7 +361,7 @@ FIELD REPORT TEXT:
                     except ValueError:
                         pass
                 unit = cls.normalize_unit(row.get("Unit") or row.get("UOM"))
-                date_str = row.get("Date") or datetime.utcnow().strftime("%Y-%m-%d")
+                date_str = row.get("Date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 status = cls.normalize_status(row.get("Status") or "IN_PROGRESS")
                 items.append({
                     "page_number": 1,
@@ -396,7 +396,7 @@ FIELD REPORT TEXT:
                         except ValueError:
                             pass
                     unit = cls.normalize_unit(row_dict.get("unit") or row_dict.get("uom"))
-                    date_str = row_dict.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+                    date_str = row_dict.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                     status = cls.normalize_status(row_dict.get("status") or "IN_PROGRESS")
                     items.append({
                         "page_number": 1,
@@ -424,7 +424,7 @@ FIELD REPORT TEXT:
             "bounding_box": None,
             "verbatim_excerpt": f"Audio Voice Recording: {clean_name}. Stored permanently in MinIO for planner playback and forensic record.",
             "description": f"Verbal Site Progress Update from audio recording ({clean_name})",
-            "execution_date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "execution_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "quantity": None,
             "unit": None,
             "location": None,
@@ -520,7 +520,7 @@ FIELD REPORT TEXT:
                         "bounding_box": None,
                         "verbatim_excerpt": text[:300],
                         "description": text[:200],
-                        "execution_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "execution_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                         "quantity": None,
                         "unit": None,
                         "location": None,
@@ -534,7 +534,7 @@ FIELD REPORT TEXT:
                     "bounding_box": None,
                     "verbatim_excerpt": f"File: {artifact.original_filename}",
                     "description": f"Site artifact: {artifact.original_filename}",
-                    "execution_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "execution_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "quantity": None,
                     "unit": None,
                     "location": None,
@@ -545,12 +545,12 @@ FIELD REPORT TEXT:
             # 3. Create ExecutionEvent entities in DB
             created_events: List[ExecutionEvent] = []
             for item in extracted_items:
-                exec_date = datetime.utcnow()
+                exec_date = datetime.now(timezone.utc).replace(tzinfo=None)
                 if item.get("execution_date"):
                     try:
                         exec_date = datetime.strptime(str(item["execution_date"])[:10], "%Y-%m-%d")
                     except Exception:
-                        exec_date = datetime.utcnow()
+                        exec_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
                 event = ExecutionEvent(
                     artifact_id=artifact.id,
