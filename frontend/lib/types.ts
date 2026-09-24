@@ -523,11 +523,18 @@ export interface CPMActivityNode {
   early_finish: string | null;
   late_start: string | null;
   late_finish: string | null;
+  forecast_start?: string | null;
+  forecast_finish?: string | null;
+  finish_variance?: number | null;
   total_float: number | null;
   free_float: number | null;
   is_critical: boolean;
   is_near_critical: boolean;
   has_negative_float: boolean;
+  is_open_start?: boolean;
+  is_open_finish?: boolean;
+  float_warning?: string | null;
+  float_explanation?: string | null;
   driving_predecessor_id?: string | null;
   driving_predecessor_code?: string | null;
 }
@@ -536,6 +543,7 @@ export interface CPMResult {
   project_id: string;
   project_start: string | null;
   project_finish: string | null;
+  data_date?: string | null;
   project_duration_days: number;
   critical_path: string[];
   critical_activities: string[];
@@ -544,6 +552,7 @@ export interface CPMResult {
   open_start_activities: string[];
   open_finish_activities: string[];
   isolated_activities: string[];
+  high_float_activities?: string[];
   logic_quality_percent: number;
   activities: Record<string, CPMActivityNode>;
   cycles_detected: boolean;

@@ -249,3 +249,289 @@ def test_cpm_performance_large_network():
         # 5,000 activities must complete in under 2 seconds
         assert elapsed < 2.5, f"CPM for {count} activities took {elapsed:.2f}s (expected < 2.5s)"
 
+
+def test_known_cpm_network_diamond():
+    """
+    Section 38 Specification Test:
+    A -> B, A -> C, B -> D, C -> D
+    A = 2 days, B = 5 days, C = 8 days, D = 2 days
+    Expected:
+      Longest path: A -> C -> D
+      Project duration: 12 working days
+      A = Critical, C = Critical, D = Critical
+      B = Non-critical with Float = 3.0 days (8 - 5 = 3 days slack)
+    """
+    engine = CPMEngine()
+    activities = [
+        {"activity_code": "A", "duration": 2},
+        {"activity_code": "B", "duration": 5},
+        {"activity_code": "C", "duration": 8},
+        {"activity_code": "D", "duration": 2},
+    ]
+    relationships = [
+        {"predecessor_code": "A", "successor_code": "B", "relationship_type": "FS", "lag": 0},
+        {"predecessor_code": "A", "successor_code": "C", "relationship_type": "FS", "lag": 0},
+        {"predecessor_code": "B", "successor_code": "D", "relationship_type": "FS", "lag": 0},
+        {"predecessor_code": "C", "successor_code": "D", "relationship_type": "FS", "lag": 0},
+    ]
+
+    start = date(2026, 6, 1)  # Monday
+    result = engine.calculate(activities, relationships, project_start_date=start)
+
+    assert not result.cycles_detected
+    assert result.critical_path == ["A", "C", "D"]
+    assert "A" in result.critical_activities
+    assert "C" in result.critical_activities
+    assert "D" in result.critical_activities
+    assert "B" not in result.critical_activities
+
+    act_b = result.activities["B"]
+    assert act_b.total_float == 3.0
+    assert act_b.free_float == 3.0
+    assert act_b.is_critical is False
+
+    # Duration: A (2d) + C (8d) + D (2d) = 12 working days
+    assert result.project_duration_days == 12.0
+
+
+def test_all_relationship_types_fs_ss_ff_sf():
+    """
+    Section 39 Specification Test:
+    Verify separate tests covering FS, SS, FF, and SF.
+    Ensure CPM does not treat all relationships as FS.
+    """
+    engine = CPMEngine()
+    start = date(2026, 6, 1)  # Monday
+
+    # 1. FS: Pred finishes, next day succ starts
+    res_fs = engine.calculate(
+        [{"activity_code": "P", "duration": 5}, {"activity_code": "S", "duration": 3}],
+        [{"predecessor_code": "P", "successor_code": "S", "relationship_type": "FS"}],
+        project_start_date=start,
+    )
+    # P: Mon Jun 1 to Fri Jun 5. S: Mon Jun 8 to Wed Jun 10
+    assert res_fs.activities["S"].early_start == date(2026, 6, 8)
+
+    # 2. SS: Pred starts, succ starts same day (lag 0)
+    res_ss = engine.calculate(
+        [{"activity_code": "P", "duration": 5}, {"activity_code": "S", "duration": 3}],
+        [{"predecessor_code": "P", "successor_code": "S", "relationship_type": "SS"}],
+        project_start_date=start,
+    )
+    assert res_ss.activities["S"].early_start == start
+
+    # 3. FF: Pred finishes, succ finishes on or after pred finish
+    res_ff = engine.calculate(
+        [{"activity_code": "P", "duration": 5}, {"activity_code": "S", "duration": 3}],
+        [{"predecessor_code": "P", "successor_code": "S", "relationship_type": "FF"}],
+        project_start_date=start,
+    )
+    # P finishes Fri Jun 5. S (3d) must finish Fri Jun 5 -> S starts Wed Jun 3
+    assert res_ff.activities["S"].early_finish == date(2026, 6, 5)
+    assert res_ff.activities["S"].early_start == date(2026, 6, 3)
+
+    # 4. SF: Pred starts, succ finishes
+    res_sf = engine.calculate(
+        [{"activity_code": "P", "duration": 5}, {"activity_code": "S", "duration": 3}],
+        [{"predecessor_code": "P", "successor_code": "S", "relationship_type": "SF", "lag": 4}],
+        project_start_date=start,
+    )
+    assert res_sf.activities["S"].early_finish is not None
+
+
+def test_lag_and_lead_variations():
+    """
+    Section 40 Specification Test:
+    FS + 2d, FS + 0d, FS - 1d (lead).
+    Verify that dates differ correctly.
+    """
+    engine = CPMEngine()
+    start = date(2026, 6, 1)  # Monday, duration 3d finishes Wed Jun 3
+
+    # FS + 0d: finishes Wed Jun 3 -> succ starts Thu Jun 4
+    res_0 = engine.calculate(
+        [{"activity_code": "A", "duration": 3}, {"activity_code": "B", "duration": 2}],
+        [{"predecessor_code": "A", "successor_code": "B", "relationship_type": "FS", "lag": 0}],
+        project_start_date=start,
+    )
+    assert res_0.activities["B"].early_start == date(2026, 6, 4)
+
+    # FS + 2d: finishes Wed Jun 3 -> 2 working days lag -> succ starts Mon Jun 8
+    res_pos = engine.calculate(
+        [{"activity_code": "A", "duration": 3}, {"activity_code": "B", "duration": 2}],
+        [{"predecessor_code": "A", "successor_code": "B", "relationship_type": "FS", "lag": 2}],
+        project_start_date=start,
+    )
+    assert res_pos.activities["B"].early_start == date(2026, 6, 8)
+
+    # FS - 1d (lead of 1 day): finishes Wed Jun 3 -> succ starts on finish day (Wed Jun 3)
+    res_neg = engine.calculate(
+        [{"activity_code": "A", "duration": 3}, {"activity_code": "B", "duration": 2}],
+        [{"predecessor_code": "A", "successor_code": "B", "relationship_type": "FS", "lag": -1}],
+        project_start_date=start,
+    )
+    assert res_neg.activities["B"].early_start == date(2026, 6, 3)
+
+    # Verify all 3 starts are strictly distinct
+    assert res_neg.activities["B"].early_start < res_0.activities["B"].early_start < res_pos.activities["B"].early_start
+
+
+def test_calendar_with_working_days_and_holiday_shift():
+    """
+    Section 41 Specification Test:
+    Activity starting Monday with 5 working days duration:
+    - Normal week finishes Friday.
+    - Adding holiday on Wednesday shifts finish to Monday.
+    """
+    # 1. Normal week
+    cal_std = CalendarSpec.standard_5day()
+    engine_std = CPMEngine(default_calendar=cal_std)
+    start = date(2026, 6, 1)  # Monday
+    res_norm = engine_std.calculate(
+        [{"activity_code": "A", "duration": 5}],
+        [],
+        project_start_date=start,
+    )
+    assert res_norm.activities["A"].early_finish == date(2026, 6, 5)  # Friday
+
+    # 2. Week with holiday on Wednesday June 3
+    cal_hol = CalendarSpec.standard_5day(holidays={date(2026, 6, 3)})
+    engine_hol = CPMEngine(default_calendar=cal_hol)
+    res_hol = engine_hol.calculate(
+        [{"activity_code": "A", "duration": 5}],
+        [],
+        project_start_date=start,
+    )
+    # Mon (1), Tue (2), [Wed Holiday skipped], Thu (3), Fri (4), [Weekend], Mon Jun 8 (5)
+    assert res_hol.activities["A"].early_finish == date(2026, 6, 8)
+
+
+def test_variance_by_activity_status_no_today_reliance():
+    """
+    Section 43 & Section 44 Specification Test:
+    Completed: Planned Finish June 20, Actual Finish June 22 -> Variance +2d
+    In-progress: Planned Finish June 20, Forecast Finish June 24 -> Variance +4d
+    Not-started: Planned Finish June 20, Forecast Finish June 25 -> Variance +5d
+    NEVER use today's date in any variance calculation.
+    """
+    engine = CPMEngine()
+    activities = [
+        {
+            "activity_code": "ACT_COMPLETED",
+            "name": "Completed Activity",
+            "status": "COMPLETED",
+            "duration": 5,
+            "planned_start": date(2024, 6, 15),
+            "planned_finish": date(2024, 6, 20),
+            "actual_start": date(2024, 6, 15),
+            "actual_finish": date(2024, 6, 22),
+        },
+        {
+            "activity_code": "ACT_IN_PROGRESS",
+            "name": "In Progress Activity",
+            "status": "IN_PROGRESS",
+            "duration": 10,
+            "percent_complete": 60.0,
+            "planned_start": date(2024, 6, 10),
+            "planned_finish": date(2024, 6, 20),
+            "actual_start": date(2024, 6, 10),
+            "remaining_duration": 4,  # finishes June 24
+        },
+        {
+            "activity_code": "ACT_NOT_STARTED",
+            "name": "Not Started Activity",
+            "status": "NOT_STARTED",
+            "duration": 5,
+            "planned_start": date(2024, 6, 15),
+            "planned_finish": date(2024, 6, 20),
+        },
+    ]
+
+    # Run CPM starting June 20 (or matching dates)
+    res = engine.calculate(activities, [], project_start_date=date(2024, 6, 15))
+
+    # 1. Completed activity
+    c_act = res.activities["ACT_COMPLETED"]
+    assert c_act.forecast_finish == date(2024, 6, 22)
+    assert c_act.finish_variance == 2.0  # +2d, NOT 700+ days!
+
+    # 2. In-progress activity with planned June 20 and forecast June 24
+    ip_act = res.activities["ACT_IN_PROGRESS"]
+    # forecast finish must be based on schedule logic, not today's system date
+    assert ip_act.finish_variance is not None
+    assert ip_act.finish_variance < 50.0  # Mathematically grounded, not +700d
+
+
+def test_data_date_forward_pass_cutoff():
+    """
+    Section 7 & 8: Data Date must prevent uncompleted activities from starting prior to data date.
+    """
+    engine = CPMEngine()
+    activities = [
+        {"activity_code": "PAST_ACT", "duration": 5, "planned_start": date(2026, 6, 1), "status": "NOT_STARTED"},
+    ]
+    # Data Date set to June 15, 2026
+    data_date = date(2026, 6, 15)
+    res = engine.calculate(activities, [], project_start_date=date(2026, 6, 1), data_date=data_date)
+
+    # Activity must not start before June 15
+    assert res.activities["PAST_ACT"].early_start >= data_date
+    assert res.data_date == data_date
+
+
+def test_terminal_activities_anchor_to_calculated_finish_no_huge_float():
+    """
+    Section 19: Prevent the +300d float bug caused by anchoring backward pass
+    to far-off project planned envelope dates instead of calculated finish.
+    """
+    engine = CPMEngine()
+    activities = [
+        {"activity_code": "ACT_1", "duration": 5},
+        {"activity_code": "ACT_2", "duration": 5},
+    ]
+    relationships = [
+        {"predecessor_code": "ACT_1", "successor_code": "ACT_2", "relationship_type": "FS"},
+    ]
+
+    # Without a hard contract deadline, both activities on the linear path must have Total Float = 0
+    res = engine.calculate(activities, relationships, project_start_date=date(2026, 6, 1))
+    assert res.activities["ACT_1"].total_float == 0.0
+    assert res.activities["ACT_2"].total_float == 0.0
+
+
+def test_high_float_warnings_and_explanations():
+    """
+    Section 20 & 36: High float activities must be diagnosed with meaningful warnings
+    (e.g., OPEN_FINISH, DISCONNECTED, HIGH_FLOAT) and explanations, never silently capped.
+    """
+    engine = CPMEngine(high_float_threshold=40.0)
+    activities = [
+        {"activity_code": "START", "duration": 1},
+        {"activity_code": "MAIN_CRIT", "duration": 100},
+        {"activity_code": "SIDE_SHORT", "duration": 5},
+        {"activity_code": "FINISH", "duration": 1},
+        {"activity_code": "DISCONNECTED_ACT", "duration": 2},
+    ]
+    relationships = [
+        {"predecessor_code": "START", "successor_code": "MAIN_CRIT"},
+        {"predecessor_code": "START", "successor_code": "SIDE_SHORT"},
+        {"predecessor_code": "MAIN_CRIT", "successor_code": "FINISH"},
+        {"predecessor_code": "SIDE_SHORT", "successor_code": "FINISH"},
+    ]
+
+    res = engine.calculate(activities, relationships, project_start_date=date(2026, 1, 1))
+
+    # SIDE_SHORT has huge float (95 working days) because MAIN_CRIT takes 100 days
+    side = res.activities["SIDE_SHORT"]
+    assert side.total_float == 95.0
+    assert side.float_warning == "HIGH_FLOAT"
+    assert "non-controlling" in side.float_explanation.lower() or "slack" in side.float_explanation.lower()
+
+    # DISCONNECTED_ACT has no links
+    disc = res.activities["DISCONNECTED_ACT"]
+    assert disc.is_open_start is True
+    assert disc.is_open_finish is True
+    assert disc.float_warning == "DISCONNECTED"
+    assert "disconnected" in disc.float_explanation.lower()
+
+

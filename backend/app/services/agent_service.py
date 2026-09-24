@@ -36,6 +36,7 @@ from app.schemas.agent import (
     ProposalConfirmResponse,
 )
 from app.services.agent_parser import ConversationalParser
+from app.services.cpm_engine import CPMEngine, CPMResult
 from app.services.extraction_service import ExtractionService
 from app.services.matching_service import MatchingService
 from app.services.minio_service import minio_service
@@ -965,6 +966,157 @@ class TimeAgentService:
         return res
 
     @classmethod
+    def _run_project_cpm(cls, db: Session, project: Project) -> CPMResult:
+        from app.repositories.activity_repo import ActivityRepository
+        from app.repositories.relationship_repo import RelationshipRepository
+
+        activities, _ = ActivityRepository.filter_activities(
+            db=db, project_id=project.id, page=1, page_size=5000
+        )
+        relationships = RelationshipRepository.get_by_project(db, project.id)
+
+        act_dicts = [
+            {
+                "id": a.id,
+                "activity_code": a.activity_code,
+                "name": a.name,
+                "original_duration": a.original_duration or 0.0,
+                "planned_start": a.planned_start,
+                "planned_finish": a.planned_finish,
+                "actual_start": a.actual_start,
+                "actual_finish": a.actual_finish,
+                "calendar": a.calendar,
+                "status": a.status,
+                "percent_complete": a.percent_complete,
+                "remaining_duration": a.remaining_duration,
+                "constraint_type": a.constraint_type,
+                "constraint_date": a.constraint_date,
+            }
+            for a in activities
+        ]
+        rel_dicts = [
+            {
+                "id": r.id,
+                "predecessor_id": r.predecessor_id,
+                "successor_id": r.successor_id,
+                "predecessor_code": r.predecessor_code,
+                "successor_code": r.successor_code,
+                "relationship_type": r.relationship_type,
+                "lag": r.lag,
+            }
+            for r in relationships
+        ]
+        engine = CPMEngine()
+        return engine.calculate(
+            activities=act_dicts,
+            relationships=rel_dicts,
+            project_start_date=project.planned_start.date() if project.planned_start else None,
+            data_date=project.data_date.date() if project.data_date else None,
+        )
+
+    @classmethod
+    def _simulate_activity_delay(
+        cls,
+        db: Session,
+        project: Project,
+        activity_code: str,
+        delay_days: float,
+    ) -> Dict[str, Any]:
+        """
+        Simulates delay on activity without mutating official schedule (strictly read-only).
+        """
+        from app.repositories.activity_repo import ActivityRepository
+        from app.repositories.relationship_repo import RelationshipRepository
+
+        activities, _ = ActivityRepository.filter_activities(
+            db=db, project_id=project.id, page=1, page_size=5000
+        )
+        relationships = RelationshipRepository.get_by_project(db, project.id)
+
+        act_dicts_base = []
+        act_dicts_sim = []
+        target_name = activity_code
+
+        for a in activities:
+            dur = a.original_duration or 0.0
+            is_target = (a.activity_code.upper() == activity_code.upper())
+            if is_target:
+                target_name = a.name
+            d_base = {
+                "id": a.id,
+                "activity_code": a.activity_code,
+                "name": a.name,
+                "original_duration": dur,
+                "planned_start": a.planned_start,
+                "planned_finish": a.planned_finish,
+                "actual_start": a.actual_start,
+                "actual_finish": a.actual_finish,
+                "calendar": a.calendar,
+                "status": a.status,
+                "percent_complete": a.percent_complete,
+                "remaining_duration": a.remaining_duration,
+                "constraint_type": a.constraint_type,
+                "constraint_date": a.constraint_date,
+            }
+            d_sim = dict(d_base)
+            if is_target:
+                d_sim["original_duration"] = dur + delay_days
+                if d_sim.get("remaining_duration") is not None:
+                    d_sim["remaining_duration"] = float(d_sim["remaining_duration"]) + delay_days
+            act_dicts_base.append(d_base)
+            act_dicts_sim.append(d_sim)
+
+        rel_dicts = [
+            {
+                "id": r.id,
+                "predecessor_id": r.predecessor_id,
+                "successor_id": r.successor_id,
+                "predecessor_code": r.predecessor_code,
+                "successor_code": r.successor_code,
+                "relationship_type": r.relationship_type,
+                "lag": r.lag,
+            }
+            for r in relationships
+        ]
+
+        engine = CPMEngine()
+        base_cpm = engine.calculate(
+            activities=act_dicts_base,
+            relationships=rel_dicts,
+            project_start_date=project.planned_start.date() if project.planned_start else None,
+            data_date=project.data_date.date() if project.data_date else None,
+        )
+        sim_cpm = engine.calculate(
+            activities=act_dicts_sim,
+            relationships=rel_dicts,
+            project_start_date=project.planned_start.date() if project.planned_start else None,
+            data_date=project.data_date.date() if project.data_date else None,
+        )
+
+        impact_days = 0
+        if base_cpm.project_finish and sim_cpm.project_finish:
+            impact_days = (sim_cpm.project_finish - base_cpm.project_finish).days
+
+        base_node = base_cpm.activities.get(activity_code) or next(
+            (n for n in base_cpm.activities.values() if n.activity_code.upper() == activity_code.upper()), None
+        )
+        sim_node = sim_cpm.activities.get(activity_code) or next(
+            (n for n in sim_cpm.activities.values() if n.activity_code.upper() == activity_code.upper()), None
+        )
+
+        return {
+            "activity_code": activity_code,
+            "activity_name": target_name,
+            "delay_days": delay_days,
+            "base_project_finish": base_cpm.project_finish.isoformat() if base_cpm.project_finish else "N/A",
+            "sim_project_finish": sim_cpm.project_finish.isoformat() if sim_cpm.project_finish else "N/A",
+            "impact_days": impact_days,
+            "base_float": base_node.total_float if base_node else 0.0,
+            "sim_float": sim_node.total_float if sim_node else 0.0,
+            "is_critical_after": sim_node.is_critical if sim_node else False,
+        }
+
+    @classmethod
     def _handle_information_query(
         cls,
         db: Session,
@@ -974,14 +1126,76 @@ class TimeAgentService:
         raw_text: str,
     ) -> str:
         resp_lang = cls._resolve_template_language(conv)
+        lower = raw_text.lower()
 
-        # 1. Query activity by code or location tag (e.g. F-204) if specifically cited in message
+        # 0. Identify referenced activity code or location
         target_ref = parsed.reported_activity_code or parsed.location
         if not target_ref:
             extracted_code = ConversationalParser.extract_activity_code(raw_text)
             if extracted_code:
                 target_ref = extracted_code
 
+        # 1. Deterministic What-if Simulation Check (Section 32 & 33)
+        delay_match = re.search(r"(?:delay(?:ed)?\s+(?:by\s+)?(\d+(?:\.\d+)?)|what\s+if.*?(\d+(?:\.\d+)?)\s*d(?:ays?)?)", lower)
+        if delay_match and target_ref:
+            delay_val = float(delay_match.group(1) or delay_match.group(2) or 0.0)
+            if delay_val > 0:
+                sim = cls._simulate_activity_delay(db, project, target_ref, delay_val)
+                return (
+                    f"[Deterministic Schedule Simulation — Read-Only]\n"
+                    f"Simulating +{delay_val:g}d duration delay on {sim['activity_code']} ({sim['activity_name']}):\n"
+                    f"• Baseline Project Finish: {sim['base_project_finish']}\n"
+                    f"• Simulated Project Finish: {sim['sim_project_finish']}\n"
+                    f"• Net Project Delay Impact: +{sim['impact_days']}d to completion\n"
+                    f"• Activity Total Float: {sim['sim_float']}d (was {sim['base_float']}d)\n"
+                    f"• Critical after delay: {'Yes' if sim['is_critical_after'] else 'No'}\n\n"
+                    f"Note: Official project schedule records remain strictly unchanged."
+                )
+
+        # 2. Deterministic CPM / Float / Critical Path / Variance Check (Section 31)
+        is_cpm_query = any(k in lower for k in [
+            "critical", "float", "variance", "forecast", "driving", "longest path", "slack", "cpm"
+        ])
+        if is_cpm_query:
+            cpm_res = cls._run_project_cpm(db, project)
+
+            if target_ref:
+                node = cpm_res.activities.get(target_ref) or next(
+                    (n for n in cpm_res.activities.values() if n.activity_code.upper() == target_ref.upper()), None
+                )
+                if node:
+                    crit_str = "Yes (Longest Path)" if node.is_critical else "No"
+                    p_fin = node.planned_finish.strftime('%Y-%m-%d') if node.planned_finish else "N/A"
+                    f_fin = node.forecast_finish.strftime('%Y-%m-%d') if node.forecast_finish else "N/A"
+                    var_str = f"{node.finish_variance:+.0f}d" if node.finish_variance is not None else "0d"
+                    diag = f"\n• Diagnostic: {node.float_explanation}" if node.float_explanation else ""
+
+                    return (
+                        f"Deterministic Schedule Analysis for {node.activity_code} ({node.name}):\n"
+                        f"• Critical: {crit_str}\n"
+                        f"• Total Float: {node.total_float}d\n"
+                        f"• Free Float: {node.free_float}d\n"
+                        f"• Planned Finish: {p_fin}\n"
+                        f"• Forecast Finish: {f_fin}\n"
+                        f"• Finish Variance: {var_str}\n"
+                        f"• Driving Predecessor: {node.driving_predecessor_code or 'None (Project Start)'}"
+                        f"{diag}"
+                    )
+
+            if any(k in lower for k in ["critical path", "critical activities", "longest path"]):
+                crit_list = ", ".join(cpm_res.critical_path) if cpm_res.critical_path else "None"
+                dur = cpm_res.project_duration_days
+                p_fin = cpm_res.project_finish.strftime('%Y-%m-%d') if cpm_res.project_finish else 'N/A'
+                return (
+                    f"Project {project.project_code} Critical Path Analysis:\n"
+                    f"• Critical Path ({len(cpm_res.critical_path)} activities): {crit_list}\n"
+                    f"• Calculated Project Duration: {dur} working days\n"
+                    f"• Calculated Project Finish: {p_fin}\n"
+                    f"• Near-Critical Activities: {len(cpm_res.near_critical_activities)}\n"
+                    f"• Negative Float Activities: {len(cpm_res.negative_float_activities)}"
+                )
+
+        # 3. Query activity by code or location tag (e.g. F-204) if specifically cited in message
         if target_ref:
             act = (
                 db.query(Activity)

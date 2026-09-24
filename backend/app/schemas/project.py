@@ -17,6 +17,17 @@ class ProjectCreate(ProjectBase):
     pass
 
 
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    planned_start: Optional[datetime] = None
+    planned_finish: Optional[datetime] = None
+    data_date: Optional[datetime] = None
+
+
+class ProjectDataDateUpdate(BaseModel):
+    data_date: Optional[datetime] = Field(None, description="Project progress cutoff data date")
+
+
 class ProjectResponse(ProjectBase):
     model_config = ConfigDict(from_attributes=True)
 

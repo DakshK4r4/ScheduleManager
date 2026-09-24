@@ -294,6 +294,11 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
             "actual_start": a.actual_start,
             "actual_finish": a.actual_finish,
             "calendar": a.calendar,
+            "status": a.status,
+            "percent_complete": a.percent_complete,
+            "remaining_duration": a.remaining_duration,
+            "constraint_type": a.constraint_type,
+            "constraint_date": a.constraint_date,
         }
         for a in activities
     ]
@@ -316,7 +321,8 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
         activities=act_dicts,
         relationships=rel_dicts,
         project_start_date=proj.planned_start.date() if proj.planned_start else None,
-        target_finish_date=proj.planned_finish.date() if proj.planned_finish else None,
+        target_finish_date=None,  # Do NOT anchor backward pass to high-level envelope project planned_finish
+        data_date=proj.data_date.date() if proj.data_date else None,
     )
 
     total_acts = len(activities)
@@ -337,11 +343,18 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
             "early_finish": node.early_finish.isoformat() if node.early_finish else None,
             "late_start": node.late_start.isoformat() if node.late_start else None,
             "late_finish": node.late_finish.isoformat() if node.late_finish else None,
+            "forecast_start": node.forecast_start.isoformat() if node.forecast_start else None,
+            "forecast_finish": node.forecast_finish.isoformat() if node.forecast_finish else None,
+            "finish_variance": node.finish_variance,
             "total_float": node.total_float,
             "free_float": node.free_float,
             "is_critical": node.is_critical,
             "is_near_critical": node.is_near_critical,
             "has_negative_float": node.has_negative_float,
+            "is_open_start": node.is_open_start,
+            "is_open_finish": node.is_open_finish,
+            "float_warning": node.float_warning,
+            "float_explanation": node.float_explanation,
             "driving_predecessor_id": node.driving_predecessor_id,
             "driving_predecessor_code": node.driving_predecessor_code,
         }
@@ -350,6 +363,7 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
         "project_id": project_id,
         "project_start": result.project_start.isoformat() if result.project_start else None,
         "project_finish": result.project_finish.isoformat() if result.project_finish else None,
+        "data_date": result.data_date.isoformat() if result.data_date else None,
         "project_duration_days": result.project_duration_days,
         "critical_path": result.critical_path,
         "critical_activities": result.critical_activities,
@@ -358,6 +372,7 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
         "open_start_activities": result.open_start_activities,
         "open_finish_activities": result.open_finish_activities,
         "isolated_activities": result.isolated_activities,
+        "high_float_activities": result.high_float_activities,
         "logic_quality_percent": logic_quality,
         "activities": act_nodes,
         "cycles_detected": result.cycles_detected,

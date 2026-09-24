@@ -36,17 +36,27 @@ class CPMActivityNode:
     calendar_id: Optional[str] = None
     constraint_type: Optional[str] = None  # e.g., 'MANDATORY_START', 'MANDATORY_FINISH', 'START_NO_EARLIER', 'FINISH_NO_LATER'
     constraint_date: Optional[date] = None
+    status: str = "NOT_STARTED"            # NOT_STARTED, IN_PROGRESS, COMPLETED
+    percent_complete: float = 0.0
+    remaining_duration: Optional[float] = None
 
     # Calculated CPM fields
     early_start: Optional[date] = None
     early_finish: Optional[date] = None
     late_start: Optional[date] = None
     late_finish: Optional[date] = None
+    forecast_start: Optional[date] = None
+    forecast_finish: Optional[date] = None
+    finish_variance: Optional[float] = None  # in days: forecast/actual finish - planned finish
     total_float: Optional[float] = None  # in working days
     free_float: Optional[float] = None   # in working days
     is_critical: bool = False
     is_near_critical: bool = False
     has_negative_float: bool = False
+    is_open_start: bool = False
+    is_open_finish: bool = False
+    float_warning: Optional[str] = None      # e.g., 'HIGH_FLOAT', 'OPEN_FINISH', 'DISCONNECTED', 'NEGATIVE_FLOAT'
+    float_explanation: Optional[str] = None  # Human-readable explanation of why float is large or negative
     driving_predecessor_id: Optional[str] = None
     driving_predecessor_code: Optional[str] = None
     float_path_index: Optional[int] = None
@@ -80,6 +90,9 @@ class CPMResult:
     isolated_activities: List[str]          # activities with no predecessors AND no successors
     open_start_activities: List[str]        # activities with no predecessors
     open_finish_activities: List[str]       # activities with no successors
+    high_float_activities: List[str] = field(default_factory=list)
+    data_date: Optional[date] = None
+    must_finish_by_date: Optional[date] = None
     near_critical_threshold: float = 5.0
     cycles_detected: bool = False
     error: Optional[str] = None
@@ -96,10 +109,12 @@ class CPMEngine:
         calendars: Optional[Dict[str, CalendarSpec]] = None,
         default_calendar: Optional[CalendarSpec] = None,
         near_critical_threshold: float = 5.0,
+        high_float_threshold: float = 40.0,
     ):
         self.calendars = calendars or {}
         self.default_calendar = default_calendar or CalendarService.DEFAULT_CALENDAR
         self.near_critical_threshold = near_critical_threshold
+        self.high_float_threshold = high_float_threshold
 
     def get_calendar(self, calendar_id: Optional[str]) -> CalendarSpec:
         if calendar_id and calendar_id in self.calendars:
@@ -212,11 +227,13 @@ class CPMEngine:
         edges: List[CPMRelationshipEdge],
         ordered_ids: List[str],
         project_start_date: date,
+        data_date: Optional[date] = None,
     ):
         """
         Calculates Early Start (ES) and Early Finish (EF) for each activity.
         Respects FS, SS, FF, SF relationships, lags, calendars, and constraints.
         Identifies driving predecessors for each activity.
+        Accounts for data_date cutoff and status-aware progress.
         """
         # Map incoming edges by successor_id
         incoming_edges: Dict[str, List[CPMRelationshipEdge]] = defaultdict(list)
@@ -240,19 +257,19 @@ class CPMEngine:
 
                 if rel_type == "FS":
                     # Predecessor must finish before successor starts
-                    # Next working day after pred.early_finish + lag
-                    base_finish = pred.early_finish
+                    standard_start = CalendarService.next_working_day(pred.early_finish + timedelta(days=1), cal)
                     if lag > 0:
-                        base_finish = CalendarService.add_working_days(base_finish, lag + 1, cal)
-                        es_candidate = base_finish
+                        cur = standard_start
+                        for _ in range(int(round(lag))):
+                            cur = CalendarService.next_working_day(cur + timedelta(days=1), cal)
+                        es_candidate = cur
                     elif lag < 0:
-                        # Lead (negative lag)
-                        lead_days = abs(lag)
-                        es_candidate = CalendarService.subtract_working_days(base_finish, lead_days - 1, cal)
+                        cur = standard_start
+                        for _ in range(int(round(abs(lag)))):
+                            cur = CalendarService.prev_working_day(cur - timedelta(days=1), cal)
+                        es_candidate = cur
                     else:
-                        # Standard FS: successor starts next working day after pred.early_finish
-                        next_day = pred.early_finish + timedelta(days=1)
-                        es_candidate = CalendarService.next_working_day(next_day, cal)
+                        es_candidate = standard_start
 
                 elif rel_type == "SS":
                     # Predecessor starts, and with lag, successor can start
@@ -325,6 +342,53 @@ class CPMEngine:
                 act.driving_predecessor_code = driving_edge.predecessor_code
                 driving_edge.is_driving = True
 
+            # Progress & Data Date aware handling:
+            # 1. COMPLETED activities use actual dates if recorded
+            if act.status == "COMPLETED":
+                if act.actual_start:
+                    act.early_start = act.actual_start
+                if act.actual_finish:
+                    act.early_finish = act.actual_finish
+                elif duration <= 0:
+                    act.early_finish = act.early_start
+                else:
+                    act.early_finish = CalendarService.add_working_days(act.early_start, duration, cal)
+                act.forecast_start = act.early_start
+                act.forecast_finish = act.early_finish
+                continue
+
+            # 2. IN_PROGRESS activities: remaining work executed from max(early_start, data_date)
+            if act.status == "IN_PROGRESS":
+                if act.actual_start:
+                    act.forecast_start = act.actual_start
+                else:
+                    act.forecast_start = act.early_start
+
+                rem_dur = act.remaining_duration
+                if rem_dur is None:
+                    pct = act.percent_complete or 0.0
+                    rem_dur = max(0.0, round(duration * (1.0 - pct / 100.0), 1))
+
+                # Remaining work cannot start prior to data date
+                if data_date:
+                    dd_working = CalendarService.next_working_day(data_date, cal)
+                    rem_start = max(act.early_start, dd_working)
+                else:
+                    rem_start = act.early_start
+
+                if rem_dur <= 0:
+                    act.early_finish = rem_start
+                else:
+                    act.early_finish = CalendarService.add_working_days(rem_start, rem_dur, cal)
+                act.forecast_finish = act.early_finish
+                continue
+
+            # 3. NOT_STARTED activities: work cannot start prior to data date
+            if data_date:
+                dd_working = CalendarService.next_working_day(data_date, cal)
+                if act.early_start < dd_working:
+                    act.early_start = dd_working
+
             # Handle Constraints on Start
             if act.constraint_type in ("MANDATORY_START", "START_NO_EARLIER") and act.constraint_date:
                 c_date = CalendarService.next_working_day(act.constraint_date, cal)
@@ -345,6 +409,9 @@ class CPMEngine:
                 if act.constraint_type == "MANDATORY_FINISH":
                     act.early_finish = c_date
                     act.early_start = CalendarService.subtract_working_days(act.early_finish, duration, cal)
+
+            act.forecast_start = act.early_start
+            act.forecast_finish = act.early_finish
 
     # -------------------------------------------------------------------------
     # 3. DETERMINISTIC BACKWARD PASS
@@ -385,14 +452,19 @@ class CPMEngine:
 
                 if rel_type == "FS":
                     # pred.LF must allow succ.LS after lag
-                    base_start = succ.late_start
+                    standard_prev_finish = CalendarService.prev_working_day(succ.late_start - timedelta(days=1), cal)
                     if lag > 0:
-                        lf_candidate = CalendarService.subtract_working_days(base_start, lag + 1, cal)
+                        cur = standard_prev_finish
+                        for _ in range(int(round(lag))):
+                            cur = CalendarService.prev_working_day(cur - timedelta(days=1), cal)
+                        lf_candidate = cur
                     elif lag < 0:
-                        lf_candidate = CalendarService.add_working_days(base_start, abs(lag) - 1, cal)
+                        cur = standard_prev_finish
+                        for _ in range(int(round(abs(lag)))):
+                            cur = CalendarService.next_working_day(cur + timedelta(days=1), cal)
+                        lf_candidate = cur
                     else:
-                        prev_day = base_start - timedelta(days=1)
-                        lf_candidate = CalendarService.prev_working_day(prev_day, cal)
+                        lf_candidate = standard_prev_finish
 
                 elif rel_type == "SS":
                     # succ.LS must be >= pred.LS + lag
@@ -487,20 +559,35 @@ class CPMEngine:
         nodes: Dict[str, CPMActivityNode],
         edges: List[CPMRelationshipEdge],
         ordered_ids: List[str],
-    ) -> Tuple[List[str], List[str], List[str], List[str], List[List[str]]]:
+    ) -> Tuple[List[str], List[str], List[str], List[str], List[List[str]], List[str]]:
         """
-        Calculates Total Float (TF), Free Float (FF), Critical Path, and Float Paths.
+        Calculates Total Float (TF), Free Float (FF), Critical Path, Float Paths,
+        and high float / open-end warnings.
         """
         outgoing_edges: Dict[str, List[CPMRelationshipEdge]] = defaultdict(list)
+        incoming_edges: Dict[str, List[CPMRelationshipEdge]] = defaultdict(list)
         for e in edges:
             outgoing_edges[e.predecessor_id].append(e)
+            incoming_edges[e.successor_id].append(e)
 
         critical_activities: List[str] = []
         near_critical_activities: List[str] = []
         negative_float_activities: List[str] = []
+        high_float_activities: List[str] = []
 
         for act_id, act in nodes.items():
             cal = self.get_calendar(act.calendar_id)
+            preds = incoming_edges.get(act_id, [])
+            succs = outgoing_edges.get(act_id, [])
+            act.is_open_start = len(preds) == 0
+            act.is_open_finish = len(succs) == 0
+
+            # Compute finish variance: Forecast/Actual Finish - Planned Finish
+            # Never use Today's date!
+            if act.planned_finish:
+                ref_finish = act.forecast_finish or act.actual_finish or act.early_finish
+                if ref_finish:
+                    act.finish_variance = float((ref_finish - act.planned_finish).days)
 
             # Total Float = LS - ES (or LF - EF) in working days
             if act.late_start and act.early_start:
@@ -572,19 +659,36 @@ class CPMEngine:
 
                 act.free_float = round(min(free_floats), 2) if free_floats else act.total_float
 
-            # Classify Criticality
+            # Classify Criticality and Float Warnings
             tf_val = act.total_float if act.total_float is not None else 0.0
             if tf_val < 0.0:
                 act.has_negative_float = True
                 act.is_critical = True
                 negative_float_activities.append(act.activity_code)
                 critical_activities.append(act.activity_code)
+                act.float_warning = "NEGATIVE_FLOAT"
+                act.float_explanation = "Negative float: activity completion exceeds required finish or constraint."
             elif tf_val == 0.0:
                 act.is_critical = True
                 critical_activities.append(act.activity_code)
             elif tf_val <= self.near_critical_threshold:
                 act.is_near_critical = True
                 near_critical_activities.append(act.activity_code)
+
+            if tf_val > self.high_float_threshold:
+                high_float_activities.append(act.activity_code)
+                if act.is_open_start and act.is_open_finish:
+                    act.float_warning = "DISCONNECTED"
+                    act.float_explanation = "Activity is completely disconnected (no predecessor or successor links)."
+                elif act.is_open_finish:
+                    act.float_warning = "OPEN_FINISH"
+                    act.float_explanation = "Terminal activity with no successor logic; late date anchored to project finish."
+                elif act.is_open_start:
+                    act.float_warning = "OPEN_START"
+                    act.float_explanation = "Activity has no predecessor logic."
+                else:
+                    act.float_warning = "HIGH_FLOAT"
+                    act.float_explanation = "Activity has large schedule slack on a non-controlling path."
 
         # ---------------------------------------------------------------------
         # 5. LONGEST PATH / CRITICAL PATH CONTINUOUS CHAIN
@@ -602,6 +706,7 @@ class CPMEngine:
             near_critical_activities,
             negative_float_activities,
             float_paths,
+            high_float_activities,
         )
 
     def _calculate_longest_path(
@@ -687,6 +792,8 @@ class CPMEngine:
         relationships: List[Dict[str, Any]],
         project_start_date: Optional[Union[date, datetime, str]] = None,
         target_finish_date: Optional[Union[date, datetime, str]] = None,
+        data_date: Optional[Union[date, datetime, str]] = None,
+        must_finish_by_date: Optional[Union[date, datetime, str]] = None,
     ) -> CPMResult:
         """
         Runs the full deterministic CPM pass.
@@ -719,6 +826,9 @@ class CPMEngine:
                 calendar_id=a.get("calendar"),
                 constraint_type=a.get("constraint_type"),
                 constraint_date=to_d(a.get("constraint_date")),
+                status=str(a.get("status") or "NOT_STARTED").upper(),
+                percent_complete=float(a.get("percent_complete") or 0.0),
+                remaining_duration=float(a.get("remaining_duration")) if a.get("remaining_duration") is not None else None,
             )
 
         edges: List[CPMRelationshipEdge] = []
@@ -798,23 +908,29 @@ class CPMEngine:
             planned_starts = [n.planned_start for n in nodes.values() if n.planned_start]
             start_d = min(planned_starts) if planned_starts else date.today()
 
+        # Resolve Data Date
+        d_date = CalendarService._to_date(data_date) if data_date else None
+
         # 2. Forward pass
-        self._forward_pass(nodes, edges, ordered_ids, start_d)
+        self._forward_pass(nodes, edges, ordered_ids, start_d, data_date=d_date)
 
         # Project Finish Date from max early finish
         calculated_finish = max((n.early_finish for n in nodes.values() if n.early_finish), default=start_d)
-        target_f = CalendarService._to_date(target_finish_date) if target_finish_date else None
+        
+        # Target finish / must finish by date
+        target_f = CalendarService._to_date(must_finish_by_date or target_finish_date) if (must_finish_by_date or target_finish_date) else None
 
         # 3. Backward pass
         self._backward_pass(nodes, edges, ordered_ids, calculated_finish, target_f)
 
-        # 4. Total float, free float, and paths
+        # 4. Total float, free float, paths, and warnings
         (
             critical_path,
             critical_acts,
             near_crit_acts,
             neg_float_acts,
             float_paths,
+            high_float_acts,
         ) = self._calculate_floats_and_paths(nodes, edges, ordered_ids)
 
         cal_default = self.default_calendar
@@ -834,6 +950,9 @@ class CPMEngine:
             isolated_activities=isolated,
             open_start_activities=open_starts,
             open_finish_activities=open_finishes,
+            high_float_activities=high_float_acts,
+            data_date=d_date,
+            must_finish_by_date=target_f,
             near_critical_threshold=self.near_critical_threshold,
             cycles_detected=False,
         )

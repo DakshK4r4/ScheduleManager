@@ -74,6 +74,24 @@ export async function fetchProject(id: string): Promise<Project> {
   return handleResponse<Project>(res);
 }
 
+export async function updateProject(id: string, updates: Partial<Project>): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  return handleResponse<Project>(res);
+}
+
+export async function updateProjectDataDate(id: string, dataDate: string | null): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects/${id}/data-date`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data_date: dataDate ? new Date(dataDate).toISOString() : null }),
+  });
+  return handleResponse<Project>(res);
+}
+
 export async function deleteProject(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete project");

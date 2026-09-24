@@ -69,6 +69,18 @@ class ProjectRepository:
         return project
 
     @staticmethod
+    def update(db: Session, project_id: str, updates: dict) -> Optional[ProjectResponse]:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return None
+        for key, val in updates.items():
+            if hasattr(p, key) and key not in ("id", "project_code", "created_at"):
+                setattr(p, key, val)
+        db.commit()
+        db.refresh(p)
+        return ProjectRepository.get_by_id(db, project_id)
+
+    @staticmethod
     def delete(db: Session, project_id: str) -> bool:
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:

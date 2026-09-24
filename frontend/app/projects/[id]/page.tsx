@@ -221,6 +221,7 @@ function ProjectWorkspaceContent() {
       <ProjectCommandBar
         project={project}
         averageCompletion={statusCounts.avgPercent}
+        onProjectUpdated={loadProjectData}
       />
 
       {/* 3. Module Navigation Tabs */}

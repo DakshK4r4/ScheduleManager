@@ -162,23 +162,29 @@ export default function ActivityTable({
     }
   };
 
-  // Compute schedule finish variance in working days
-  const computeVariance = (act: Activity): string => {
-    if (act.actual_finish && act.planned_finish) {
+  // Compute schedule finish variance in working days (status-aware & deterministic)
+  const computeVariance = (act: Activity, node?: CPMActivityNode): string => {
+    // 1. If backend CPM node has calculated finish_variance, use it directly
+    if (node && node.finish_variance !== undefined && node.finish_variance !== null) {
+      const v = node.finish_variance;
+      if (v === 0) return "0d";
+      return v > 0 ? `+${v}d` : `${v}d`;
+    }
+    // 2. Fallback using status-aware dates:
+    // Completed: Actual Finish - Planned Finish
+    // In-Progress / Not-Started: Forecast Finish - Planned Finish
+    const targetFinish =
+      act.status === "COMPLETED" && act.actual_finish
+        ? act.actual_finish
+        : node?.forecast_finish || act.planned_finish;
+
+    if (targetFinish && act.planned_finish) {
       const diffDays = Math.round(
-        (new Date(act.actual_finish).getTime() - new Date(act.planned_finish).getTime()) /
+        (new Date(targetFinish).getTime() - new Date(act.planned_finish).getTime()) /
           (1000 * 3600 * 24)
       );
       if (diffDays === 0) return "0d";
       return diffDays > 0 ? `+${diffDays}d` : `${diffDays}d`;
-    }
-    if (act.status === "IN_PROGRESS" && act.planned_finish) {
-      const now = new Date();
-      const planFinish = new Date(act.planned_finish);
-      if (now > planFinish) {
-        const slipDays = Math.round((now.getTime() - planFinish.getTime()) / (1000 * 3600 * 24));
-        return `+${slipDays}d`;
-      }
     }
     return "-";
   };
@@ -308,7 +314,7 @@ export default function ActivityTable({
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 transition-colors whitespace-nowrap"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Start</span>
+                    <span>Planned Start</span>
                     <ArrowUpDown className="h-3 w-3 text-slate-400" />
                   </div>
                 </th>
@@ -317,13 +323,21 @@ export default function ActivityTable({
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 transition-colors whitespace-nowrap"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Finish</span>
+                    <span>Planned Finish</span>
                     <ArrowUpDown className="h-3 w-3 text-slate-400" />
                   </div>
                 </th>
+                <th className="px-3 py-2.5 whitespace-nowrap">Forecast Finish</th>
+                <th
+                  className="px-3 py-2.5 whitespace-nowrap text-right font-mono"
+                  title="Finish variance between the planned/baseline finish and the current forecast or actual finish."
+                >
+                  <span className="cursor-help underline decoration-dotted decoration-slate-400">
+                    Finish Var
+                  </span>
+                </th>
                 <th className="px-3 py-2.5 whitespace-nowrap text-right font-mono">Float</th>
                 <th className="px-2.5 py-2.5 whitespace-nowrap text-center">Critical</th>
-                <th className="px-3 py-2.5 whitespace-nowrap text-right font-mono">Var</th>
                 <th
                   onClick={() => handleSort("original_duration")}
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 transition-colors whitespace-nowrap text-right"
@@ -348,13 +362,13 @@ export default function ActivityTable({
             <tbody className="divide-y divide-slate-100 font-normal">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={13} className="py-12 text-center text-slate-400">
                     Loading schedule activities &amp; CPM metrics...
                   </td>
                 </tr>
               ) : activities.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={13} className="py-12 text-center text-slate-400">
                     No activities found matching your criteria.
                   </td>
                 </tr>
@@ -367,7 +381,7 @@ export default function ActivityTable({
                     negativeFloatCodes.has(act.activity_code) ||
                     (node && node.has_negative_float);
                   const floatDays = node && node.total_float !== undefined ? node.total_float : null;
-                  const variance = computeVariance(act);
+                  const variance = computeVariance(act, node);
 
                   return (
                     <tr
@@ -401,62 +415,121 @@ export default function ActivityTable({
                         <StatusBadge status={act.status} size="xs" />
                       </td>
 
-                      {/* Start */}
+                      {/* Planned Start */}
                       <td className="px-3 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
                         {formatDate(act.planned_start)}
                       </td>
 
-                      {/* Finish */}
+                      {/* Planned Finish */}
                       <td className="px-3 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
                         {formatDate(act.planned_finish)}
                       </td>
 
+                      {/* Forecast / Actual Finish */}
+                      <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px]">
+                        {act.status === "COMPLETED" && act.actual_finish ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-emerald-700 font-medium">
+                              {formatDate(act.actual_finish)}
+                            </span>
+                            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1 py-0.2 rounded font-sans font-semibold">
+                              ACT
+                            </span>
+                          </div>
+                        ) : node?.forecast_finish ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-800 font-medium">
+                              {formatDate(node.forecast_finish)}
+                            </span>
+                            <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1 py-0.2 rounded font-sans">
+                              FCST
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">
+                            {formatDate(act.planned_finish)}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Finish Variance */}
+                      <td className="px-3 py-2.5 whitespace-nowrap text-right font-mono text-[11px]">
+                        <span
+                          title="Finish variance between planned/baseline finish and current forecast or actual finish."
+                          className={
+                            variance.startsWith("+")
+                              ? "text-rose-600 font-semibold"
+                              : variance.startsWith("-")
+                              ? "text-emerald-600 font-semibold"
+                              : "text-slate-400"
+                          }
+                        >
+                          {variance}
+                        </span>
+                      </td>
+
                       {/* Total Float */}
                       <td className="px-3 py-2.5 whitespace-nowrap text-right font-mono text-[11px]">
-                        {floatDays !== null ? (
-                          <span
-                            className={
-                              floatDays < 0
-                                ? "font-bold text-rose-600"
-                                : floatDays === 0
-                                ? "font-semibold text-rose-700"
-                                : "text-slate-600"
-                            }
-                          >
-                            {floatDays > 0 ? `+${floatDays}d` : `${floatDays}d`}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
+                        <div className="flex flex-col items-end">
+                          {floatDays !== null ? (
+                            <span
+                              className={
+                                floatDays < 0
+                                  ? "font-bold text-rose-600"
+                                  : floatDays === 0
+                                  ? "font-semibold text-rose-700"
+                                  : "text-slate-600"
+                              }
+                            >
+                              {floatDays > 0 ? `+${floatDays}d` : `${floatDays}d`}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                          {node?.float_warning && (
+                            <span
+                              title={node.float_explanation || node.float_warning}
+                              className={`text-[9px] px-1 py-0.2 rounded font-sans font-medium mt-0.5 cursor-help ${
+                                node.float_warning === "HIGH_FLOAT"
+                                  ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                  : node.float_warning === "OPEN_FINISH" ||
+                                    node.float_warning === "OPEN_START"
+                                  ? "bg-orange-100 text-orange-800 border border-orange-200"
+                                  : node.float_warning === "DISCONNECTED"
+                                  ? "bg-rose-100 text-rose-800 border border-rose-200"
+                                  : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              {node.float_warning === "HIGH_FLOAT"
+                                ? "⚠ High Float"
+                                : node.float_warning === "OPEN_FINISH"
+                                ? "⚠ Open Finish"
+                                : node.float_warning === "OPEN_START"
+                                ? "⚠ Open Start"
+                                : node.float_warning === "DISCONNECTED"
+                                ? "⚠ Disconnected"
+                                : "⚠ Notice"}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Criticality Indicator */}
                       <td className="px-2.5 py-2.5 whitespace-nowrap text-center">
                         {isCrit ? (
                           <span
-                            title="Critical Path Activity (Longest Path)"
-                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold"
+                            title={
+                              node?.driving_predecessor_code
+                                ? `Critical Path Activity (Total Float ≤ 0). Driven by: ${node.driving_predecessor_code}`
+                                : "Critical Path Activity (Total Float ≤ 0)"
+                            }
+                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold cursor-help"
                           >
                             ●
                           </span>
                         ) : (
                           <span className="text-slate-200 text-xs">○</span>
                         )}
-                      </td>
-
-                      {/* Variance */}
-                      <td className="px-3 py-2.5 whitespace-nowrap text-right font-mono text-[11px]">
-                        <span
-                          className={
-                            variance.startsWith("+")
-                              ? "text-rose-600 font-semibold"
-                              : variance.startsWith("-")
-                              ? "text-emerald-600"
-                              : "text-slate-400"
-                          }
-                        >
-                          {variance}
-                        </span>
                       </td>
 
                       {/* Duration */}

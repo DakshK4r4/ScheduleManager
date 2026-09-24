@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.database import get_db
 from app.repositories.project_repo import ProjectRepository
-from app.schemas.project import ProjectResponse
+from app.schemas.project import ProjectDataDateUpdate, ProjectResponse, ProjectUpdate
 from app.services.import_service import ImportService
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -26,6 +26,37 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
             detail=f"Project '{project_id}' not found.",
         )
     return proj
+
+
+@router.patch("/{project_id}", response_model=ProjectResponse, summary="Update project metadata")
+def update_project(
+    project_id: str,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+):
+    updates = payload.model_dump(exclude_unset=True)
+    updated = ProjectRepository.update(db, project_id, updates)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project '{project_id}' not found.",
+        )
+    return updated
+
+
+@router.patch("/{project_id}/data-date", response_model=ProjectResponse, summary="Set or update project Data Date")
+def update_project_data_date(
+    project_id: str,
+    payload: ProjectDataDateUpdate,
+    db: Session = Depends(get_db),
+):
+    updated = ProjectRepository.update(db, project_id, {"data_date": payload.data_date})
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project '{project_id}' not found.",
+        )
+    return updated
 
 
 @router.post("/import", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED, summary="Import schedule file")
