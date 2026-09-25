@@ -17,8 +17,10 @@ from app.schemas.institutional_memory import (
     PlanningBenchmarkDTO,
     ProductivityMetricDTO,
 )
+from app.services.cross_project_benchmarking_service import CrossProjectBenchmarkingService
 from app.services.historical_analytics_service import HistoricalAnalyticsService
 from app.services.institutional_memory_service import InstitutionalMemoryService
+from app.services.monte_carlo_service import MonteCarloSimulationService
 
 logger = logging.getLogger("analytics_api")
 
@@ -209,3 +211,47 @@ def export_memory_ledger(
             "Cache-Control": "no-cache",
         },
     )
+
+
+@router.get(
+    "/api/v1/projects/{project_id}/risk/monte-carlo",
+    summary="Run deterministic Monte Carlo schedule risk simulation",
+)
+@router.get(
+    "/projects/{project_id}/risk/monte-carlo",
+    summary="Run deterministic Monte Carlo schedule risk simulation",
+)
+def run_monte_carlo_simulation(
+    project_id: str,
+    iterations: int = Query(100, ge=10, le=1000, description="Simulation iteration count"),
+    seed: Optional[int] = Query(42, description="Random seed for reproducible results"),
+    db: Session = Depends(get_db),
+):
+    _verify_project(db, project_id)
+    return MonteCarloSimulationService.run_simulation(
+        db=db,
+        project_id=project_id,
+        iterations=iterations,
+        seed=seed,
+    )
+
+
+@router.get(
+    "/api/v1/analytics/cross-project-benchmarks",
+    summary="Get verified unit-consistent cross-project productivity benchmarks",
+)
+@router.get(
+    "/analytics/cross-project-benchmarks",
+    summary="Get verified unit-consistent cross-project productivity benchmarks",
+)
+def get_cross_project_benchmarks(
+    discipline: Optional[str] = Query(None, description="Discipline filter"),
+    unit: Optional[str] = Query(None, description="Quantity unit filter"),
+    db: Session = Depends(get_db),
+):
+    return CrossProjectBenchmarkingService.get_benchmarks(
+        db=db,
+        discipline=discipline,
+        unit=unit,
+    )
+

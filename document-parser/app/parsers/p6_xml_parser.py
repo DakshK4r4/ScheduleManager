@@ -154,6 +154,28 @@ class P6XmlParser(BaseParser):
             orig_dur = round(planned_dur_raw / 8.0, 2) if planned_dur_raw is not None else None
             rem_dur = round(remain_dur_raw / 8.0, 2) if remain_dur_raw is not None else orig_dur
 
+            # Constraints
+            raw_cstr = (self._find_text(a_elem, "PrimaryConstraintType") or self._find_text(a_elem, "ConstraintType")).strip().lower()
+            cstr_type = None
+            if "mandatory start" in raw_cstr or "must start on" in raw_cstr:
+                cstr_type = "MANDATORY_START"
+            elif "mandatory finish" in raw_cstr or "must finish on" in raw_cstr:
+                cstr_type = "MANDATORY_FINISH"
+            elif "start no earlier" in raw_cstr or "snet" in raw_cstr:
+                cstr_type = "START_NO_EARLIER"
+            elif "start no later" in raw_cstr or "snlt" in raw_cstr:
+                cstr_type = "START_NO_LATER"
+            elif "finish no earlier" in raw_cstr or "fnet" in raw_cstr:
+                cstr_type = "FINISH_NO_EARLIER"
+            elif "finish no later" in raw_cstr or "fnlt" in raw_cstr:
+                cstr_type = "FINISH_NO_LATER"
+            elif raw_cstr:
+                cstr_type = raw_cstr.upper()
+
+            cstr_date = self.parse_datetime(
+                self._find_text(a_elem, "PrimaryConstraintDate") or self._find_text(a_elem, "ConstraintDate")
+            )
+
             canonical_activities.append(
                 CanonicalActivity(
                     activity_code=code,
@@ -169,6 +191,8 @@ class P6XmlParser(BaseParser):
                     remaining_duration=rem_dur,
                     percent_complete=pct,
                     calendar=self._find_text(a_elem, "CalendarName"),
+                    constraint_type=cstr_type,
+                    constraint_date=cstr_date,
                 )
             )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -48,6 +48,10 @@ class CanonicalActivity(BaseModel):
     remaining_duration: Optional[float] = Field(None, description="Remaining duration in days")
     percent_complete: Optional[float] = Field(0.0, description="Percentage complete (0 - 100)")
     calendar: Optional[str] = Field(None, description="Calendar name or assignment")
+    constraint_type: Optional[str] = Field(None, description="Primary constraint type (e.g. MANDATORY_START, FINISH_NO_LATER)")
+    constraint_date: Optional[datetime] = Field(None, description="Primary constraint date")
+    activity_codes: Dict[str, str] = Field(default_factory=dict, description="Activity codes map (e.g. {'Discipline': 'Civil'})")
+    notes: Optional[str] = Field(None, description="Activity notes or task memo")
 
     @field_validator("percent_complete")
     @classmethod

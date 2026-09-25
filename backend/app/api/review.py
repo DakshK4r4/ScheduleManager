@@ -147,6 +147,18 @@ def submit_review_decision(
         )
 
     target_activity_id = request.activity_id or event.matched_activity_id
+    if target_activity_id:
+        target_activity = db.query(Activity).filter(Activity.id == target_activity_id).first()
+        if not target_activity:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Target activity {target_activity_id} not found.",
+            )
+        if target_activity.project_id != event.project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Target activity {target_activity_id} belongs to project {target_activity.project_id}, not event project {event.project_id}.",
+            )
 
     # Record ReviewDecision
     decision_record = ReviewDecision(

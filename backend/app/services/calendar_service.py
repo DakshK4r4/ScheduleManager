@@ -47,6 +47,49 @@ class CalendarSpec:
 class CalendarService:
     DEFAULT_CALENDAR = CalendarSpec.standard_5day()
 
+    @classmethod
+    def load_project_calendars(cls, db: Any, project_id: str) -> Dict[str, CalendarSpec]:
+        """
+        Loads all relational calendars persisted for a project from the database,
+        converting them to deterministic CalendarSpec instances.
+        Falls back to built-in standard 5-day, 6-day, and 7-day specs.
+        """
+        calendars_map: Dict[str, CalendarSpec] = {
+            "5DAY": CalendarSpec.standard_5day(),
+            "6DAY": CalendarSpec.standard_6day(),
+            "7DAY": CalendarSpec.continuous_7day(),
+            "STANDARD": CalendarSpec.standard_5day(),
+        }
+
+        try:
+            from app.domain.models import ProjectCalendar
+            rows = db.query(ProjectCalendar).filter(ProjectCalendar.project_id == project_id).all()
+            for r in rows:
+                wd = set(r.working_days) if r.working_days else {0, 1, 2, 3, 4}
+                hd = set()
+                if r.holidays:
+                    for h in r.holidays:
+                        try:
+                            hd.add(cls._to_date(h))
+                        except Exception:
+                            pass
+                spec = CalendarSpec(
+                    calendar_id=r.calendar_code,
+                    name=r.name,
+                    working_days=wd,
+                    hours_per_day=r.hours_per_day or 8.0,
+                    holidays=hd,
+                )
+                calendars_map[r.calendar_code] = spec
+                if r.id:
+                    calendars_map[r.id] = spec
+                if r.is_default:
+                    calendars_map["DEFAULT"] = spec
+        except Exception:
+            pass
+
+        return calendars_map
+
     @staticmethod
     def _to_date(val: Union[date, datetime, str]) -> date:
         if isinstance(val, datetime):

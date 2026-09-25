@@ -47,3 +47,42 @@ def test_parse_valid_xer():
     assert rel.predecessor_code == "CIV-01"
     assert rel.successor_code == "CIV-02"
     assert rel.relationship_type == RelationshipType.FS
+
+
+SAMPLE_XER_WITH_CONSTRAINTS_AND_CODES = """ERMHDR\t19.12\t2024-01-01\tProject\tadmin\tDemo\tPROJECT_02\tUSD\tDD/MM/YYYY\t1\t0\t0
+%T\tPROJECT
+%F\tproj_id\tproj_short_name
+%R\t1\tPROJ-02
+%T\tPROJWBS
+%F\twbs_id\tproj_id\twbs_short_name\twbs_name
+%R\t10\t1\tWBS.1\tGeneral
+%T\tACTVTYPE
+%F\tactv_code_type_id\tactv_code_type_name
+%R\t101\tDiscipline
+%T\tACTVCODE
+%F\tactv_code_id\tactv_code_type_id\tshort_name\tactv_code_name
+%R\t501\t101\tCIV\tCivil Engineering
+%T\tTASK
+%F\ttask_id\tproj_id\twbs_id\ttask_code\ttask_name\tstatus_code\tcstr_type\tcstr_date
+%R\t101\t1\t10\tCIV-10\tFoundation\tTK_NotStart\tCS_MS\t2024-05-15 08:00
+%T\tTASKACTV
+%F\ttask_id\tactv_code_type_id\tactv_code_id
+%R\t101\t101\t501
+%E
+"""
+
+
+def test_parse_xer_with_constraints_and_activity_codes():
+    parser = XerParser()
+    result = parser.parse(SAMPLE_XER_WITH_CONSTRAINTS_AND_CODES.encode("utf-8"), "test_codes.xer")
+
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.activity_code == "CIV-10"
+    assert act.constraint_type == "MANDATORY_START"
+    assert act.constraint_date is not None
+    assert act.constraint_date.year == 2024
+    assert act.constraint_date.month == 5
+    assert act.constraint_date.day == 15
+    assert act.activity_codes == {"Discipline": "Civil Engineering"}
+

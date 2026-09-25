@@ -63,6 +63,8 @@ def init_db():
                     ALTER TABLE activities ADD COLUMN IF NOT EXISTS driving_predecessor_id VARCHAR(36);
                     ALTER TABLE activities ADD COLUMN IF NOT EXISTS constraint_type VARCHAR(50);
                     ALTER TABLE activities ADD COLUMN IF NOT EXISTS constraint_date TIMESTAMP;
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS activity_codes JSON DEFAULT '{}';
+                    ALTER TABLE activities ADD COLUMN IF NOT EXISTS notes TEXT;
                 """))
         except Exception as e:
             import logging

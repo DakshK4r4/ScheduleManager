@@ -35,12 +35,15 @@ from app.schemas.agent import (
     PendingActionDTO,
     ProposalConfirmResponse,
 )
+from app.services.agent_conversation_service import AgentConversationService, format_utc_iso as _format_utc_iso
 from app.services.agent_parser import ConversationalParser
 from app.services.cpm_engine import CPMEngine, CPMResult
 from app.services.extraction_service import ExtractionService
 from app.services.matching_service import MatchingService
 from app.services.minio_service import minio_service
+from app.services.project_query_service import ProjectQueryService
 from app.services.sarvam_service import SarvamService
+from app.services.scenario_simulation_service import ScenarioSimulationService
 from app.services.schedule_update_service import ScheduleUpdateService
 from app.services.validation_service import ValidationException
 
@@ -72,67 +75,7 @@ class TimeAgentService:
         text: str,
         parsed: Optional[ParsedConversationalIntent] = None,
     ) -> str:
-        """
-        Deterministic 3-7 word conversation title generation based on user message and parsed signals.
-        Never makes external API calls.
-        """
-        lower = text.lower()
-        loc = parsed.location if parsed and parsed.location else None
-        act_code = parsed.reported_activity_code if parsed and parsed.reported_activity_code else None
-
-        # Look for construction tags like F-204, CT-07, CIV-1001
-        code_match = re.search(r"\b([A-Z]{1,4}-\d{2,5})\b", text, re.IGNORECASE)
-        anchor = loc or (code_match.group(1).upper() if code_match else act_code)
-
-        if anchor and "concrete" in lower:
-            return f"{anchor} Concrete Pour"
-        if anchor and ("cable" in lower or "tray" in lower):
-            return f"{anchor} Cable Tray Progress"
-        if anchor and ("pipe" in lower or "piping" in lower):
-            return f"{anchor} Piping Progress"
-        if anchor and "foundation" in lower:
-            return f"{anchor} Foundation Progress"
-        if anchor and ("update" in lower or "%" in lower):
-            return f"{anchor} Progress Update"
-        if anchor:
-            return f"{anchor} Execution Report"
-
-        if "upcoming" in lower and "civil" in lower:
-            return "Upcoming Civil Activities"
-        if "upcoming" in lower and "activit" in lower:
-            return "Upcoming Activities"
-        if "concrete" in lower and ("pour" in lower or "poured" in lower):
-            return "Concrete Pour Progress"
-        if "cable tray" in lower:
-            return "Cable Tray Progress"
-        if "piping" in lower:
-            return "Piping Progress"
-        if "pump" in lower and ("install" in lower or "installation" in lower):
-            return "Pump Installation"
-        if "pump" in lower:
-            return "Pump Installation"
-        if "inspection" in lower:
-            return "Foundation Inspection"
-        if "mechanical" in lower:
-            return "Mechanical Progress"
-        if "electrical" in lower:
-            return "Electrical Progress"
-
-        # Fallback: clean words
-        words = [
-            w.strip(",.!?\"';:()[]{}")
-            for w in text.split()
-            if w.lower() not in {
-                "we", "i", "can", "you", "please", "the", "a", "an", "is", "are",
-                "for", "to", "in", "at", "today", "yesterday", "our", "all",
-            }
-        ]
-        clean_words = [w for w in words if w]
-        if clean_words:
-            cand = " ".join(clean_words[:5]).title()
-            return cand[:45].strip()
-
-        return "Site Progress Report"
+        return AgentConversationService.generate_conversation_title(text, parsed)
 
     @classmethod
     def get_or_create_conversation(
@@ -906,7 +849,7 @@ class TimeAgentService:
 
         # 3. Branch by Intent
         if parsed.intent == "INFORMATION_QUERY":
-            reply_text = cls._handle_information_query(db, project, conv, parsed, user_content)
+            reply_text, q_ctx = cls._handle_information_query(db, project, conv, parsed, user_content)
             return cls._save_and_return_agent_response(
                 db=db,
                 conv=conv,
@@ -914,6 +857,7 @@ class TimeAgentService:
                 action_card=None,
                 transcript=raw_transcript,
                 detected_language=detected_audio_language,
+                extra_metadata={"query_context": q_ctx} if q_ctx else None,
             )
 
         if pending_single_prop:
@@ -1024,97 +968,14 @@ class TimeAgentService:
     ) -> Dict[str, Any]:
         """
         Simulates delay on activity without mutating official schedule (strictly read-only).
+        Delegates to ScenarioSimulationService.
         """
-        from app.repositories.activity_repo import ActivityRepository
-        from app.repositories.relationship_repo import RelationshipRepository
-
-        activities, _ = ActivityRepository.filter_activities(
-            db=db, project_id=project.id, page=1, page_size=5000
+        return ScenarioSimulationService.simulate_activity_delay(
+            db=db,
+            project=project,
+            activity_code=activity_code,
+            delay_days=delay_days,
         )
-        relationships = RelationshipRepository.get_by_project(db, project.id)
-
-        act_dicts_base = []
-        act_dicts_sim = []
-        target_name = activity_code
-
-        for a in activities:
-            dur = a.original_duration or 0.0
-            is_target = (a.activity_code.upper() == activity_code.upper())
-            if is_target:
-                target_name = a.name
-            d_base = {
-                "id": a.id,
-                "activity_code": a.activity_code,
-                "name": a.name,
-                "original_duration": dur,
-                "planned_start": a.planned_start,
-                "planned_finish": a.planned_finish,
-                "actual_start": a.actual_start,
-                "actual_finish": a.actual_finish,
-                "calendar": a.calendar,
-                "status": a.status,
-                "percent_complete": a.percent_complete,
-                "remaining_duration": a.remaining_duration,
-                "constraint_type": a.constraint_type,
-                "constraint_date": a.constraint_date,
-            }
-            d_sim = dict(d_base)
-            if is_target:
-                d_sim["original_duration"] = dur + delay_days
-                if d_sim.get("remaining_duration") is not None:
-                    d_sim["remaining_duration"] = float(d_sim["remaining_duration"]) + delay_days
-            act_dicts_base.append(d_base)
-            act_dicts_sim.append(d_sim)
-
-        rel_dicts = [
-            {
-                "id": r.id,
-                "predecessor_id": r.predecessor_id,
-                "successor_id": r.successor_id,
-                "predecessor_code": r.predecessor_code,
-                "successor_code": r.successor_code,
-                "relationship_type": r.relationship_type,
-                "lag": r.lag,
-            }
-            for r in relationships
-        ]
-
-        engine = CPMEngine()
-        base_cpm = engine.calculate(
-            activities=act_dicts_base,
-            relationships=rel_dicts,
-            project_start_date=project.planned_start.date() if project.planned_start else None,
-            data_date=project.data_date.date() if project.data_date else None,
-        )
-        sim_cpm = engine.calculate(
-            activities=act_dicts_sim,
-            relationships=rel_dicts,
-            project_start_date=project.planned_start.date() if project.planned_start else None,
-            data_date=project.data_date.date() if project.data_date else None,
-        )
-
-        impact_days = 0
-        if base_cpm.project_finish and sim_cpm.project_finish:
-            impact_days = (sim_cpm.project_finish - base_cpm.project_finish).days
-
-        base_node = base_cpm.activities.get(activity_code) or next(
-            (n for n in base_cpm.activities.values() if n.activity_code.upper() == activity_code.upper()), None
-        )
-        sim_node = sim_cpm.activities.get(activity_code) or next(
-            (n for n in sim_cpm.activities.values() if n.activity_code.upper() == activity_code.upper()), None
-        )
-
-        return {
-            "activity_code": activity_code,
-            "activity_name": target_name,
-            "delay_days": delay_days,
-            "base_project_finish": base_cpm.project_finish.isoformat() if base_cpm.project_finish else "N/A",
-            "sim_project_finish": sim_cpm.project_finish.isoformat() if sim_cpm.project_finish else "N/A",
-            "impact_days": impact_days,
-            "base_float": base_node.total_float if base_node else 0.0,
-            "sim_float": sim_node.total_float if sim_node else 0.0,
-            "is_critical_after": sim_node.is_critical if sim_node else False,
-        }
 
     @classmethod
     def _handle_information_query(
@@ -1124,140 +985,24 @@ class TimeAgentService:
         conv: Conversation,
         parsed: ParsedConversationalIntent,
         raw_text: str,
-    ) -> str:
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
         resp_lang = cls._resolve_template_language(conv)
         lower = raw_text.lower()
 
         # 0. Identify referenced activity code or location
         target_ref = parsed.reported_activity_code or parsed.location
+        extracted_code = None
         if not target_ref:
             extracted_code = ConversationalParser.extract_activity_code(raw_text)
             if extracted_code:
                 target_ref = extracted_code
 
-        # 1. Deterministic What-if Simulation Check (Section 32 & 33)
-        delay_match = re.search(r"(?:delay(?:ed)?\s+(?:by\s+)?(\d+(?:\.\d+)?)|what\s+if.*?(\d+(?:\.\d+)?)\s*d(?:ays?)?)", lower)
-        if delay_match and target_ref:
-            delay_val = float(delay_match.group(1) or delay_match.group(2) or 0.0)
-            if delay_val > 0:
-                sim = cls._simulate_activity_delay(db, project, target_ref, delay_val)
-                return (
-                    f"[Deterministic Schedule Simulation — Read-Only]\n"
-                    f"Simulating +{delay_val:g}d duration delay on {sim['activity_code']} ({sim['activity_name']}):\n"
-                    f"• Baseline Project Finish: {sim['base_project_finish']}\n"
-                    f"• Simulated Project Finish: {sim['sim_project_finish']}\n"
-                    f"• Net Project Delay Impact: +{sim['impact_days']}d to completion\n"
-                    f"• Activity Total Float: {sim['sim_float']}d (was {sim['base_float']}d)\n"
-                    f"• Critical after delay: {'Yes' if sim['is_critical_after'] else 'No'}\n\n"
-                    f"Note: Official project schedule records remain strictly unchanged."
-                )
-
-        # 2. Deterministic CPM / Float / Critical Path / Variance Check (Section 31)
-        is_cpm_query = any(k in lower for k in [
-            "critical", "float", "variance", "forecast", "driving", "longest path", "slack", "cpm"
-        ])
-        if is_cpm_query:
-            cpm_res = cls._run_project_cpm(db, project)
-
-            if target_ref:
-                node = cpm_res.activities.get(target_ref) or next(
-                    (n for n in cpm_res.activities.values() if n.activity_code.upper() == target_ref.upper()), None
-                )
-                if node:
-                    crit_str = "Yes (Longest Path)" if node.is_critical else "No"
-                    p_fin = node.planned_finish.strftime('%Y-%m-%d') if node.planned_finish else "N/A"
-                    f_fin = node.forecast_finish.strftime('%Y-%m-%d') if node.forecast_finish else "N/A"
-                    var_str = f"{node.finish_variance:+.0f}d" if node.finish_variance is not None else "0d"
-                    diag = f"\n• Diagnostic: {node.float_explanation}" if node.float_explanation else ""
-
-                    return (
-                        f"Deterministic Schedule Analysis for {node.activity_code} ({node.name}):\n"
-                        f"• Critical: {crit_str}\n"
-                        f"• Total Float: {node.total_float}d\n"
-                        f"• Free Float: {node.free_float}d\n"
-                        f"• Planned Finish: {p_fin}\n"
-                        f"• Forecast Finish: {f_fin}\n"
-                        f"• Finish Variance: {var_str}\n"
-                        f"• Driving Predecessor: {node.driving_predecessor_code or 'None (Project Start)'}"
-                        f"{diag}"
-                    )
-
-            if any(k in lower for k in ["critical path", "critical activities", "longest path"]):
-                crit_list = ", ".join(cpm_res.critical_path) if cpm_res.critical_path else "None"
-                dur = cpm_res.project_duration_days
-                p_fin = cpm_res.project_finish.strftime('%Y-%m-%d') if cpm_res.project_finish else 'N/A'
-                return (
-                    f"Project {project.project_code} Critical Path Analysis:\n"
-                    f"• Critical Path ({len(cpm_res.critical_path)} activities): {crit_list}\n"
-                    f"• Calculated Project Duration: {dur} working days\n"
-                    f"• Calculated Project Finish: {p_fin}\n"
-                    f"• Near-Critical Activities: {len(cpm_res.near_critical_activities)}\n"
-                    f"• Negative Float Activities: {len(cpm_res.negative_float_activities)}"
-                )
-
-        # 3. Query activity by code or location tag (e.g. F-204) if specifically cited in message
-        if target_ref:
-            act = (
-                db.query(Activity)
-                .filter(
-                    Activity.project_id == project.id,
-                    or_(
-                        Activity.activity_code == target_ref,
-                        Activity.location_code == target_ref,
-                        Activity.name.ilike(f"%{target_ref}%"),
-                    ),
-                )
-                .first()
-            )
-            if act:
-                pct = int(round(act.percent_complete or 0.0)) if (act.percent_complete or 0.0).is_integer() else (act.percent_complete or 0.0)
-                display_id = act.activity_code if target_ref == act.activity_code else f"{act.activity_code} ({target_ref})"
-                if resp_lang == "hi":
-                    return f"{display_id} की वर्तमान प्रगति {pct}% है।"
-                elif resp_lang == "hinglish":
-                    return f"{display_id} ka current progress {pct}% hai."
-                else:
-                    return f"The current progress of {display_id} is {pct}%."
-            elif parsed.reported_activity_code or extracted_code:
-                if resp_lang == "hi":
-                    return f"प्रोजेक्ट '{project.project_code}' में एक्टिविटी '{target_ref}' नहीं मिली। कृपया एक्टिविटी कोड की जांच करें।"
-                elif resp_lang == "hinglish":
-                    return f"Project '{project.project_code}' mein activity '{target_ref}' nahi mili. Kripya activity code check karein."
-                else:
-                    return f"Activity '{target_ref}' was not found in project '{project.project_code}'. Please check the activity code and try again."
-
-        # 2. If active activity is anchored and no specific activity cited, return its status
-        if conv.active_activity_id:
-            act = db.query(Activity).filter(Activity.id == conv.active_activity_id).first()
-            if act:
-                wbs = db.query(WBSNode).filter(WBSNode.id == act.wbs_id).first() if act.wbs_id else None
-                p_start = act.planned_start.strftime('%Y-%m-%d') if act.planned_start else 'N/A'
-                p_finish = act.planned_finish.strftime('%Y-%m-%d') if act.planned_finish else 'N/A'
-                wbs_name = wbs.name if wbs else 'N/A'
-                pct = int(round(act.percent_complete or 0.0)) if (act.percent_complete or 0.0).is_integer() else (act.percent_complete or 0.0)
-                if resp_lang == "hi":
-                    return (
-                        f"{act.activity_code} ({act.name}) की वर्तमान प्रगति {pct}% है "
-                        f"(Status: {act.status}, Planned finish: {p_finish})।"
-                    )
-                elif resp_lang == "hinglish":
-                    return (
-                        f"{act.activity_code} ({act.name}) ka current progress {pct}% hai "
-                        f"(Status: {act.status}, Planned finish: {p_finish})."
-                    )
-                else:
-                    return (
-                        f"Current progress for {act.activity_code} ({act.name}) is {pct}% "
-                        f"(Status: {act.status}, Planned finish: {p_finish})."
-                    )
-
-        # 3. Check for historical knowledge / productivity / duration questions
-        lower = raw_text.lower()
+        # 1. Check for historical knowledge / productivity / duration questions
         is_historical = any(
             term in lower
             for term in [
                 "historical", "observed", "production rate", "rate of", "how long did",
-                "past", "average duration", "planned vs actual", "variance", "productivity",
+                "past", "average duration", "planned vs actual", "productivity",
                 "per day", "per reporting day", "history", "benchmark", "how much did we install",
                 "pouring rate", "installation rate", "pichle", "pichla", "purane", "purana",
                 "pehle", "itishas"
@@ -1266,9 +1011,9 @@ class TimeAgentService:
 
         if is_historical:
             q_type = "PRODUCTIVITY"
-            if any(term in lower for term in ["duration", "long", "time taken", "variance", "samay"]):
+            if any(term in lower for term in ["duration", "long", "time taken", "samay"]):
                 q_type = "DURATION"
-            elif any(term in lower for term in ["history", "records", "ledger", "record"]):
+            elif any(term in lower for term in ["records", "ledger", "record"]):
                 q_type = "EXECUTION_HISTORY"
 
             disc = parsed.discipline
@@ -1301,29 +1046,72 @@ class TimeAgentService:
                     summary += f"\n\n[Verified Evidence: PostgreSQL mein {evidence_count} authoritative ledger record(s)]"
                 else:
                     summary += f"\n\n[Verified Evidence: {evidence_count} authoritative ledger record(s) in PostgreSQL]"
-            return summary
+            return summary, {"tool": "HISTORICAL"}
 
-        # 4. General project summary
-        act_count = db.query(Activity).filter(Activity.project_id == project.id).count()
-        data_date_str = project.data_date.strftime('%Y-%m-%d') if project.data_date else 'Current'
-        if resp_lang == "hi":
-            return (
-                f"Project {project.name} ({project.project_code}) में कुल {act_count} activities हैं। "
-                f"वर्तमान data date {data_date_str} है। आप site progress report करने के लिए quantity और location बता सकते हैं "
-                f"(जैसे 'आज F-204 में 35 cubic meter concrete डाला है')।"
+        # 2. Targeted Single Activity Status / Progress Query (preserving multi-language test contract)
+        is_relational_or_analytics = any(k in lower for k in [
+            "after", "before", "predecessor", "successor", "depends on", "depend on",
+            "delay", "what if", "critical", "float", "variance", "all", "every",
+            "list", "give me", "show all", "longest", "shortest", "how many"
+        ])
+
+        if target_ref and not is_relational_or_analytics:
+            act = (
+                db.query(Activity)
+                .filter(
+                    Activity.project_id == project.id,
+                    or_(
+                        Activity.activity_code == target_ref,
+                        Activity.location_code == target_ref,
+                        Activity.name.ilike(f"%{target_ref}%"),
+                    ),
+                )
+                .first()
             )
-        elif resp_lang == "hinglish":
-            return (
-                f"Project {project.name} ({project.project_code}) mein total {act_count} activities hain. "
-                f"Current data date {data_date_str} hai. Aap site progress report karne ke liye quantity aur location bata sakte hain "
-                f"(e.g. 'Aaj F-204 mein 35 cubic meter concrete dala hai')."
-            )
-        else:
-            return (
-                f"Project {project.name} ({project.project_code}) has {act_count} activities. "
-                f"Current data date is {data_date_str}. You can report progress by stating quantities and locations "
-                f"(e.g., 'We poured 35 m3 for F-204 today')."
-            )
+            if act:
+                pct = int(round(act.percent_complete or 0.0)) if (act.percent_complete or 0.0).is_integer() else (act.percent_complete or 0.0)
+                display_id = act.activity_code if target_ref == act.activity_code else f"{act.activity_code} ({target_ref})"
+                if resp_lang == "hi":
+                    reply = f"{display_id} की वर्तमान प्रगति {pct}% है।"
+                elif resp_lang == "hinglish":
+                    reply = f"{display_id} ka current progress {pct}% hai."
+                else:
+                    reply = f"The current progress of {display_id} is {pct}%."
+                return reply, {"tool": "ACTIVITY_STATUS", "target_activity_code": act.activity_code, "matched_activity_ids": [act.id]}
+            elif parsed.reported_activity_code or (extracted_code and re.search(r"\b([A-Za-z0-9]{2,5}-\d{2,6})\b", raw_text)):
+                if resp_lang == "hi":
+                    reply = f"प्रोजेक्ट '{project.project_code}' में एक्टिविटी '{target_ref}' नहीं मिली। कृपया एक्टिविटी कोड की जांच करें।"
+                elif resp_lang == "hinglish":
+                    reply = f"Project '{project.project_code}' mein activity '{target_ref}' nahi mili. Kripya activity code check karein."
+                else:
+                    reply = f"Activity '{target_ref}' was not found in project '{project.project_code}'. Please check the activity code and try again."
+                return reply, {"tool": "ACTIVITY_STATUS", "not_found": target_ref}
+
+        # 3. Active activity anchored check (if user asks general progress with no parameters)
+        if conv.active_activity_id and any(k in lower for k in ["progress", "status", "pragati", "halat"]) and not is_relational_or_analytics:
+            act = db.query(Activity).filter(Activity.id == conv.active_activity_id).first()
+            if act:
+                wbs = db.query(WBSNode).filter(WBSNode.id == act.wbs_id).first() if act.wbs_id else None
+                p_finish = act.planned_finish.strftime('%Y-%m-%d') if act.planned_finish else 'N/A'
+                pct = int(round(act.percent_complete or 0.0)) if (act.percent_complete or 0.0).is_integer() else (act.percent_complete or 0.0)
+                if resp_lang == "hi":
+                    reply = f"{act.activity_code} ({act.name}) की वर्तमान प्रगति {pct}% है (Status: {act.status}, Planned finish: {p_finish})।"
+                elif resp_lang == "hinglish":
+                    reply = f"{act.activity_code} ({act.name}) ka current progress {pct}% hai (Status: {act.status}, Planned finish: {p_finish})."
+                else:
+                    reply = f"Current progress for {act.activity_code} ({act.name}) is {pct}% (Status: {act.status}, Planned finish: {p_finish})."
+                return reply, {"tool": "ACTIVITY_STATUS", "target_activity_code": act.activity_code, "matched_activity_ids": [act.id]}
+
+        # 4. General Project-Aware Query Engine (ProjectQueryService)
+        # Evaluates all natural-language queries, structured tools, filters, CPM, and calculations
+        reply_text, q_ctx = ProjectQueryService.execute_query(
+            db=db,
+            project=project,
+            conv=conv,
+            user_query=raw_text,
+            language=resp_lang,
+        )
+        return reply_text, q_ctx
 
     @classmethod
     def query_historical_performance(
@@ -2611,6 +2399,7 @@ class TimeAgentService:
         action_card: Optional[ActionCardDTO],
         transcript: Optional[str] = None,
         detected_language: Optional[str] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> MessageResponseDTO:
         # Check if conversation language requires translation fallback
         target_lang = conv.language
@@ -2663,7 +2452,10 @@ class TimeAgentService:
             except Exception as e:
                 logger.error(f"Translation fallback error: {e}")
 
-        meta_json = json.dumps(action_card.model_dump()) if action_card else None
+        meta_dict = action_card.model_dump() if action_card else {}
+        if extra_metadata:
+            meta_dict.update(extra_metadata)
+        meta_json = json.dumps(meta_dict) if meta_dict else None
         agent_msg = ConversationMessage(
             id=f"msg-{uuid.uuid4().hex[:8]}",
             conversation_id=conv.id,

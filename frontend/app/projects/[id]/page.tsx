@@ -26,11 +26,12 @@ import {
   fetchProject,
   fetchActivities,
   fetchProjectCPM,
+  fetchScheduleHealth,
   fetchReviewQueue,
   fetchProjectArtifacts,
   fetchAuditTrail,
 } from "@/lib/api";
-import { Activity, Project, CPMResult, Artifact, AuditLogItem } from "@/lib/types";
+import { Activity, Project, CPMResult, ScheduleHealthResult, Artifact, AuditLogItem } from "@/lib/types";
 import ActivityTable from "@/components/ActivityTable";
 import ActivityEditorModal from "@/components/ActivityEditorModal";
 import WbsTree from "@/components/WbsTree";
@@ -59,6 +60,7 @@ function ProjectWorkspaceContent() {
   // CPM & Schedule Health Data
   const [cpmData, setCpmData] = useState<CPMResult | null>(null);
   const [cpmLoading, setCpmLoading] = useState(false);
+  const [healthData, setHealthData] = useState<ScheduleHealthResult | null>(null);
 
   // Execution Telemetry
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
@@ -118,8 +120,12 @@ function ProjectWorkspaceContent() {
       // Load real CPM schedule health
       setCpmLoading(true);
       try {
-        const cpm = await fetchProjectCPM(projectId);
+        const [cpm, health] = await Promise.all([
+          fetchProjectCPM(projectId),
+          fetchScheduleHealth(projectId).catch(() => null),
+        ]);
         setCpmData(cpm);
+        if (health) setHealthData(health);
       } catch (cpmErr) {
         console.warn("CPM calculation note:", cpmErr);
       } finally {
@@ -377,11 +383,26 @@ function ProjectWorkspaceContent() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium">Logic Quality:</span>
-                <span className="rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-xs font-bold font-mono">
-                  {cpmData ? `${cpmData.logic_quality_percent}%` : "Calculating..."}
-                </span>
+              <div className="flex items-center gap-3">
+                {healthData && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-500 font-medium">DCMA 14-Pt:</span>
+                    <span className={`rounded-md px-2 py-0.5 text-xs font-bold font-mono border ${
+                      healthData.grade === "A" ? "bg-emerald-50 text-emerald-800 border-emerald-200" :
+                      healthData.grade === "B" ? "bg-blue-50 text-blue-800 border-blue-200" :
+                      healthData.grade === "C" ? "bg-amber-50 text-amber-800 border-amber-200" :
+                      "bg-rose-50 text-rose-800 border-rose-200"
+                    }`}>
+                      Grade {healthData.grade} ({healthData.health_score}/100)
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-500 font-medium">Logic Quality:</span>
+                  <span className="rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-xs font-bold font-mono">
+                    {cpmData ? `${cpmData.logic_quality_percent}%` : "Calculating..."}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -428,6 +449,23 @@ function ProjectWorkspaceContent() {
                 <div className="text-[10px] text-slate-500 mt-0.5">Working days</div>
               </div>
             </div>
+
+            {healthData && healthData.recommendations && healthData.recommendations.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <div className="text-[11px] font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-blue-600" />
+                  <span>DCMA 14-Point Health Recommendations:</span>
+                </div>
+                <div className="space-y-1">
+                  {healthData.recommendations.slice(0, 3).map((rec, i) => (
+                    <div key={i} className="text-[11px] text-slate-600 flex items-start gap-1.5">
+                      <span className="text-slate-400">•</span>
+                      <span>{rec}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* CRITICAL PATH SEQUENCE */}

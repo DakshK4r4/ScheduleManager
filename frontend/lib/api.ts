@@ -25,6 +25,7 @@ import {
   PlanningBenchmark,
   ProductivityMetric,
   CPMResult,
+  ScheduleHealthResult,
   TTSRequest,
   TTSResponse,
 } from "./types";
@@ -160,6 +161,11 @@ export async function fetchActivities(
 export async function fetchProjectCPM(projectId: string): Promise<CPMResult> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/cpm`);
   return handleResponse<CPMResult>(res);
+}
+
+export async function fetchScheduleHealth(projectId: string): Promise<ScheduleHealthResult> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/schedule-health`);
+  return handleResponse<ScheduleHealthResult>(res);
 }
 
 

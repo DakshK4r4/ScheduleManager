@@ -137,6 +137,7 @@ class ImportService:
                 wbs_code = a.get("wbs_code")
                 wbs_id = wbs_code_to_id.get(wbs_code) if wbs_code else None
 
+                act_codes = a.get("activity_codes") or {}
                 activity = Activity(
                     id=act_id,
                     project_id=proj_id,
@@ -153,6 +154,13 @@ class ImportService:
                     remaining_duration=a.get("remaining_duration"),
                     percent_complete=a.get("percent_complete") or 0.0,
                     calendar=a.get("calendar"),
+                    constraint_type=a.get("constraint_type"),
+                    constraint_date=parse_dt(a.get("constraint_date")),
+                    activity_codes=act_codes if act_codes else None,
+                    discipline=a.get("discipline") or act_codes.get("Discipline") or act_codes.get("DISCIPLINE"),
+                    location_code=a.get("location_code") or act_codes.get("Location") or act_codes.get("LOCATION") or act_codes.get("Area") or act_codes.get("AREA"),
+                    contractor_name=a.get("contractor_name") or act_codes.get("Contractor") or act_codes.get("CONTRACTOR"),
+                    notes=a.get("notes"),
                 )
                 db.add(activity)
 

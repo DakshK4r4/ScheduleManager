@@ -1,0 +1,1515 @@
+=== PAGE 1 ===
+TENSIX
+CONSULTING
+Primavera P6 EPPM Reports Tab Samples
+The following are some samples of the standard reports available in the Oracle Primavera P6 EPPM
+Reports Tab. This tab is available when P6 is integrated with Oracle Business Intelligence (BI) Publisher.
+ORACLE Primavera P6
+Dashboards - Portfolios - Projects ~
+Resources - Reports
+Reports
+Ш- A A
+Ten Six Consulting offer Bl Publisher integration services, Bi Publisher training and BI Publisher report
+development services. Follow these links for more information.
+Integration Services:
+http://www.tensixconsulting.com/software-services/primavera-implementation-consulting/primavera-
+integration/
+BI Publisher Training:
+http://www.tensixconsulting.com/oracle-business-intelligence-publisher/
+BI Publisher Services:
+http://www.tensixconsulting.com/primavera-p6-bi-publisher-services/
+http://www.tensixconsulting.com
+
+=== PAGE 2 ===
+TENSIX
+Primavera P6 EPPM Reports Tab BI Publisher Samples
+Sample Primavera P6 EPPM (BI Publisher) Reports included in this document are:
+Cross Project Relationships - 3
+Activity Look Ahead - 4
+Duration Analysis - 5
+Activity Relationships - 6
+Activity Resource Assignments - 7
+Schedule Report with Notebooks - 8
+Resource Role Skill Sets - 9
+Resource Code Assignments - 10
+Resource Role Associations - 11
+Code Assignments - 12
+Project Portfolio Review - 13
+Portfolio Counts - 16
+Document Assignments - 17
+Risk Scoring Report - 18
+Project Status Report - 19
+Qualitative Risk Report - 20
+Project Hierarchy Including Steps - 21
+Users - 22
+Project Template Management - 23
+Portfolio Privileges - 24
+Calendar User - 27
+Copyright© Ten Six Consulting, LLC. 2012. All rights reserved. http://www.tensixconsulting.com
+1
+
+=== PAGE 3 ===
+ORACLE
+City Center Office Building Addition
+8/13/2012 23:04 PM
+Cross Project Relationships
+Project Name / Activity Name (Critical, Relationship Type, Driving, Lag)
+Predecessor Projects impacting City Center Office Building Addition
+Haitang Corporate Park / Begin Building Construction (No, Start to Start, No, 0)
+Haitang Corporate Park / Review and Approve Flooring (No, Finish to Start, No, 0)
+Haitang Corporate Park / Foundation Phase Complete (No, Finish to Start, No, 0)
+Haitang Corporate Park / Connect Equipment (No, Finish to Start, Yes, 0)
+Haitang Corporate Park / Structure Complete (No, Finish to Start, Yes, 0)
+Haitang Corporate Park / Finish Carpentry and Millwork (Yes, Finish to Start, Yes, 0)
+Successor Projects impacted by City Center Office Building Addition
+Nesbid Building Expansion / Rough-In Phase Begins (No, Finish to Start, Yes, 0)
+Nesbid Building Expansion / Drywall in Offices (Yes, Finish to Start, Yes, 0)
+Nesbid Building Expansion / Award Contract for Flooring (No, Finish to Start, Yes, 0)
+Nesbid Building Expansion / Begin Building Construction (No, Finish to Start, Yes, 0)
+Nesbid Building Expansion / Erect Structural Frame (No, Finish to Start, Yes, 0)
+Nesbid Building Expansion / Floor Decking (No, Finish to Start, Yes, 0)
+1 of 1
+
+=== PAGE 4 ===
+ORACLE
+City Center Office Building Addition
+Activity Name(ID)
+Activity Look Ahead
+Status
+Critical
+Percent
+Complete
+Start
+Prepare and Solicit Bids for
+Flooring(EC1170)
+Prepare and Solicit Bids for Heat
+Pump(EC1190)
+Excavation(EC1230)
+Review Bids for Heat
+Pump(EC1240)
+Review Bids for
+Flooring(EC1250)
+Award Contract for
+Brick(EC1260)
+Deliver Brick(EC1280)
+In
+Progress
+In
+Progress
+Not Started
+Not Started
+Not Started
+In
+Progress
+Not Started
+N
+Y
+N
+Y
+N
+N
+N
+95
+92
+0
+8
+04/04/2011
+04/14/2011
+05/02/2011
+05/03/2011
+05/06/2011
+04/21/2011
+05/05/2011
+1 of 1
+8/13/2012 23:01 PM
+Finish
+05/06/2011
+05/03/2011
+06/02/2011
+05/17/2011
+05/27/2011
+05/05/2011
+05/06/2011
+
+=== PAGE 5 ===
+ORACLE®
+City Center Office Building Addition
+Activity
+Set Heat Pump
+Rough-In Plumbing/Piping
+Touch-up and Clean-up
+Fabricate and Deliver Heat Pump and
+Controls
+Install Underground Water Lines
+Form/Pour Concrete Footings
+Concrete Foundation Walls
+Erect Structural Frame
+Floor Decking
+Concrete First Floor
+Install AC Grills and Registers
+Assemble Brick Samples
+Assemble and Submit Flooring Samples
+Start Office Building Addition Project
+Award Contract for Heat Pump
+Assemble Technical Data for Heat Pump
+Form and Pour Slab
+Begin Structural Phase
+Concrete Second Floor
+Install Door and Window Frames
+Install Exterior Doors and Windows
+Prepare and Solicit Bids for Heat Pump
+Finish Carpentry and Millwork
+Building Addition Complete
+Install Lighting Fixtures
+Prepare and Solicit Bids for Brick
+Exterior
+Duration Analysis
+Planned
+Actual
+Duration
+Duration
+96
+19
+19
+3283
+96
+184
+192
+378
+251
+288
+40
+48
+58
+88
+288
+19
+38
+115
+96
+0
+58
+115
+0
+0
+0
+0
+58
+9
+139
+High
+Estimate
+(25%)
+120
+24
+24
+4104
+120
+230
+240
+472
+314
+360
+50
+60
+72
+110
+360
+24
+48
+144
+120
+72
+144
+1 of 3
+8/13/2012 23:00 PM
+Low
+Estimate
+(20%)
+77
+15
+15
+2627
+77
+147
+154
+302
+201
+230
+32
+38
+46
+230
+15
+31
+92
+92
+Variance %
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+100
+121
+
+=== PAGE 6 ===
+ORACLE
+City Center Office Building Addition
+Activity Relationships
+Activity Name
+Responsibility
+Activity Status
+Start
+Design Building Addition
+MILLS
+Pred Name
+Start Office Building Addition Project
+Succ. Name
+Review and Approve Designs
+Start Office Building
+FOLEY
+Addition Project
+Succ. Name
+Design Building Addition
+Review and Approve
+MILLS
+Designs
+Completed
+Completed
+Completed
+Pred Name
+Design Building Addition
+Succ. Name
+Assemble Brick Samples
+Assemble Technical Data for Heat Pump
+Assemble and Submit Flooring Samples
+Begin Building Construction
+Assemble Brick Samples
+NOLAN
+Completed
+Pred Name
+Review and Approve Designs
+Succ. Name
+Review and Approve Brick Samples
+Assemble Technical Data MILLS
+Completed
+for Heat Pump
+Pred Name
+Review and Approve Designs
+Succ. Name
+Review Technical Data on Heat Pumps
+Assemble and Submit
+HARIS
+Completed
+1 of 15
+05/01/2011
+Responsibility
+FOLEY
+Responsibility
+MILLS
+05/01/2011
+Responsibility
+MILLS
+05/01/2011
+Responsibility
+MILLS
+Responsibility
+NOLAN
+MILLS
+HARIS
+FOLEY
+05/01/2011
+Responsibility
+MILLS
+Responsibility
+NOLAN
+05/01/2011
+Responsibility
+MILLS
+Responsibility
+MILLS
+05/01/2011
+8/13/2012 23:04 PM
+Finish
+05/01/2011
+Finish
+05/01/2011
+Start
+05/01/2011
+05/01/2011
+Start
+05/01/2011
+05/01/2011
+Finish
+05/01/2011
+Start
+05/01/2011
+05/01/2011
+05/01/2011
+05/01/2011
+05/01/2011
+Finish
+05/01/2011
+Start
+05/01/2011
+05/01/2011
+Finish
+05/01/2011
+Start
+05/01/2011
+05/01/2011
+
+=== PAGE 7 ===
+ORACLE
+City Center Office Building Addition
+Activity (ID)
+Activity Resource Assignments
+Duration
+Start
+Design Building Addition (EC1000)
+Resource Name
+Paul Kim
+Duration
+441.6
+Start Office Building Addition Project (EC1010)
+Review and Approve Designs (EC1030)
+Resource Name
+Paul Kim
+Duration
+172.8
+Assemble Brick Samples (EC1040)
+Assemble Technical Data for Heat Pump (EC1050)
+Resource Name
+Paul Kim
+Duration
+57.6
+Assemble and Submit Flooring Samples (EC1060)
+Review and Approve Brick Samples (EC1070)
+Resource Name
+Paul Kim
+Duration
+240
+Review and Approve Flooring (EC1080)
+Resource Name
+Paul Kim
+Duration
+224
+Begin Building Construction (EC1090)
+Site Preparation (EC1100)
+Resource Name
+Excavator
+Duration
+345.6
+Review Technical Data on Heat Pumps (EC1160)
+Resource Name
+Paul Kim
+Duration
+216
+Prepare and Solicit Bids for Flooring (EC1170)
+417.6
+Start
+11/01/2010
+0
+172.8
+Start
+01/17/2011
+57.6
+Start
+02/16/2011
+11/01/2010
+Finish
+01/19/2011
+11/01/2010
+01/17/2011
+Finish
+02/17/2011
+02/17/2011
+02/16/2011
+Finish
+02/25/2011
+0
+240
+Start
+02/28/2011
+224
+Start
+02/25/2011
+0
+345.6
+Start
+02/23/2011
+216
+Start
+02/24/2011
+192
+02/25/2011
+02/28/2011
+Finish
+04/13/2011
+02/25/2011
+Finish
+04/11/2011
+02/28/2011
+02/23/2011
+Finish
+04/18/2011
+02/24/2011
+Finish
+04/06/2011
+04/04/2011
+1 of 8
+8/14/2012 1:41 AM
+Finish
+01/19/2011
+11/01/2010
+02/17/2011
+02/17/2011
+02/25/2011
+02/25/2011
+04/13/2011
+04/11/2011
+02/28/2011
+04/18/2011
+04/06/2011
+05/06/2011
+
+=== PAGE 8 ===
+ORACLE
+City Center Office Building Addition
+Activity
+Schedule Report with Notebooks
+Activity Status BL1 Start
+Start
+Review Bids for Heat
+Pump(EC1240)
+Review Bids for
+Flooring(EC1250)
+Award Contract for
+Brick(EC1260)
+Award Contract for Heat
+Pump(EC1270)
+Deliver Brick(EC1280)
+Fabricate and Deliver Heat
+Pump and Controls(EC1290)
+Award Contract for
+Flooring(EC1300)
+Fabricate and Deliver
+Flooring(EC1310)
+Install Underground Water
+Lines(EC1320)
+Not Started
+Not Started
+In Progress
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Notebook Topics:
+Anticipated Problems
+04/20/2011
+05/03/2011
+04/22/2011
+05/06/2011
+04/29/2011
+04/21/2011A
+05/04/2011
+05/17/2011
+05/06/2011
+05/12/2011
+05/05/2011
+05/25/2011
+05/13/2011
+05/27/2011
+05/20/2011
+06/03/2011
+05/20/2011
+06/03/2011
+Notebook Description:
+Grading and soil conditions will slow
+this operation. Check estimate.
+Also, Plumber availability is limitec
+for this work.
+8/13/2012 23:05 PM
+BL1 Finish Finish
+05/03/2011 05/17/2011
+05/13/2011 05/27/2011
+05/06/2011 05/05/2011
+05/11/2011
+05/25/2011
+05/09/2011
+05/06/2011
+12/24/2012 01/04/2013
+05/19/2011
+06/03/2011
+06/13/2012 06/27/2012
+06/06/2011
+06/20/2011
+Install Underground Electric
+Conduit(EC1330)
+Form/Pour Concrete
+Footings(EC1340)
+Concrete Foundation
+Walls(EC1350)
+Not Started
+Not Started
+Not Started
+05/20/2011
+06/07/2011
+07/11/2011
+06/03/2011
+06/21/2011
+07/25/2011
+06/06/2011
+07/08/2011
+08/11/2011
+06/20/2011
+07/22/2011
+08/25/2011
+2 of 5
+
+=== PAGE 9 ===
+ORACLE
+Resource Role Skill Sets
+Resource (Role count)
+Role
+Primary Role
+Painter (1)
+Project Managers (1)
+Paul Kim (1)
+Dan Sharpe (1)
+Trades
+Management
+Management
+Yes
+Yes
+Yes
+Alice Wynn (2)
+Developer
+Lean Six Sigma
+Specialist
+Product Tester
+Rea Johnson (1)
+Deepak Singh (2)
+Project Leader
+DBA
+Quality Assurance
+Gary Marshall (3)
+Product Tester
+Product Analyst
+Product Designer
+Larry West (2)
+Product Manager
+Product Project Manager
+Yes
+No
+Yes
+Yes
+No
+Yes
+No
+Yes
+No
+Yes
+No
+Sue Baxter (2)
+1 of 7
+8/14/20121:42 AM
+Proficiency
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+
+=== PAGE 10 ===
+ORACLE
+8/14/20121:42 AM
+Resource Code
+Resource Code Assignments
+Code Value
+Resource Name
+Classification
+CONTR
+Gary Marshall
+Conveying Subcontractor
+Roofing Subcontractor
+Utilities Subcontractor
+BPM Consultant 1
+Millwork Subcontractor
+Thermal Protection Subcontractor
+Finishes & Fit-out Subcontractor
+Fire Suppression Subcontractor
+IT Consultant
+Sue Baxter
+Specialty Metal Fabricator Subcontractor
+FF&E Specialties
+BPM Consultant 2
+Drywall Subcontractor
+BPM Consultant 3
+Paul Riley
+Glass & Glazing Subcontractor
+Paving & Roadways Subcontractor
+Pool Installation Subcontractor
+Landscaping Subcontractor
+Concrete Foundation Subcontractor
+PTIC
+Molly Abraham
+Alice Wynn
+Lori McNeil
+FTTrade
+Operator
+1 of 13
+
+=== PAGE 11 ===
+ORACLE
+8/14/20121:46 AM
+Resource Role Associations
+Role (count)
+Resource (ID)
+Proficiency
+Primary Role
+Process Architect (5)
+Judy Billings (BillingsJ)
+Frank Chu (Chuf)
+Wayne Prescott (PrescottW)
+Michelle Peterson (PetersonM)
+Ben Frost (FrostB)
+3 - Skilled
+2 - Expert
+3 - Skilled
+4 - Proficient
+2 - Expert
+Accounting (2)
+Project Controls (Project Controls)
+Administrator (Admin)
+Business Analyst (4)
+lan Vincent (Vincentl)
+Jo Wren (WrenJ
+IT Consultant (ITCon)
+Carina Bennett (BennettC)
+Business Analyst Level 1(1)
+Michelle Peterson (PetersonM)
+Change Management Coordinator (1)
+Peter Cooper (CooperP)
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+Consultant (4)
+External Contractors (Contr)
+BPM Consultant 3 (Bpm003)
+BPM Consultant 2 (Bpm002)
+BPM Consultant 1 (Bpm001)
+Civil/Structural Crews (0)
+DBA (2)
+3 - Skilled
+3 - Skilled
+3 - Skilled
+3 - Skilled
+Yes
+Yes
+Yes
+No
+No
+No
+No
+No
+No
+Yes
+No
+Yes
+Yes
+Yes
+Yes
+Yes
+Yes
+1 of 6
+
+=== PAGE 12 ===
+ORACLE
+8/14/2012 1:47 AM
+Code Assignments
+Location
+Europe
+Europe
+Katalyst Virtualization
+Location
+Russia
+Russia
+Project Swordfish
+Location
+Europe
+Europe
+Zenith Continuity Program
+Location
+Latin America
+Latin America
+ACH Integration Project
+Location
+India
+India
+ERP Legacy Merge
+Location
+Latin America
+Latin America
+2 of 3
+
+=== PAGE 13 ===
+ORACLE
+Construction Projects
+Project(ID)
+Project Portfolio Review
+Project Manager
+Project Location
+Current Phase
+Haitang Corporate Park(EC00501)
+Chen
+China
+ISSUE
+asdfsaf
+City Center Office Building
+Addition(EC00515)
+Thomas
+Europe
+Nesbid Building Expansion(EC00530)
+Harbour Pointe Assisted Living
+Pell
+Jones
+India
+Australia
+Center(EC00610)
+ISSUE
+Building 2 Subject To Delay
+Finish Date Variance (days) is - 21d on WBS: Harbour
+Pointe.2.4
+Finish Date Variance (days) is -6d on WBS: Harbour Pointe. 1.2
+Forecast Overrun
+Unit Finishes Experiencing Productivity Delays
+RISK
+Concrete supply constrained
+Site access restricted for 2 weeks
+Weather delay due to hurricane
+Poor ground conditions
+Failed electrical inspection
+PRIORITY
+Normal
+PRIORITY
+High
+Normal
+Normal
+Top
+High
+STATUS
+Closed
+Closed
+Closed
+Closed
+Closed
+Development
+STATUS
+Closed
+Design
+Initiation
+Development
+STATUS
+Closed
+Closed
+Closed
+Closed
+Closed
+TYPE
+Threat
+Threat
+Threat
+Threat
+Threat
+1 of 3
+8/14/2012 1:49 AM
+Planned Start Data Date
+09/01/2010
+05/01/2011
+11/01/2010
+07/01/2011
+09/01/2010
+05/01/2011
+07/01/2011
+05/01/2011
+
+=== PAGE 14 ===
+ORACLE®
+Construction Projects
+8/14/2012 1:49 AM
+Project(ID)
+Project Portfolio Review
+Project Manager
+Project Location
+Current Phase
+Planned Start Data Date
+Interior design changes
+Contractor financial instability
+Permit delay
+Window manufacturing delay
+Weather delay due to unusually wet weather
+New roof coating cuts roof install time
+NOTEBOOK TOPIC
+Recent Accomplishments
+Closed
+Threat
+Closed
+Threat
+Closed
+Threat
+Closed
+Threat
+Closed
+Threat
+Closed
+Opportunity
+NOTEBOOK DESCRIPTION
+Recently past strucutral and traffic inspection. No weather delays in
+the past month allowed us to pull in finish date by a week. We
+successfully accomplsihed some work that had risk identified. The
+risks did not occur and we can now release 100k in contingency
+funds.
+Sponsor Feedback
+Juniper Nursing Home(EC00620)
+Cortez
+ISSUE
+Building 2 Subject To Delay
+Finish Date Variance (days) is -21d on WBS: Harbour
+Pointe.2.3
+Finish Date Variance (days) is -21d on WBS: Harbour
+Pointe.2.4
+Owner is happy with progress and completed a walk through during
+the month. They do anticipate a few changes, primarily around the
+curbing and the reception area.
+Latin America
+PRIORITY
+High
+Normal
+Design
+11/01/2010
+05/01/2011
+STATUS
+Closed
+Closed
+Normal
+Closed
+2 of 3
+
+=== PAGE 15 ===
+ORACLE®
+Construction Projects
+Project(ID)
+Project Portfolio Review
+Project Manager
+Project Location
+Finish Date Variance (days) is -21d on WBS: Harbour
+Normal
+Pointe. 2.5
+Finish Date Variance (days) is - 26d on WBS: Harbour Pointe.8
+Finish Date Variance (days) is -36d on WBS: Harbour Pointe.5
+Finish Date Variance (days) is -6d on WBS: Harbour Pointe. 1.2
+Forecast Overrun
+Unit Finishes Experiencing Productivity Delays
+Saratoga Senior Community(EC00630)
+Jones
+ISSUE
+Building 2 Subject To Delay
+Finish Date Variance (days) is -21d on WBS: Harbour
+Pointe.2.3
+Finish Date Variance (days) is -21d on WBS: Harbour
+Pointe.2.4
+Finish Date Variance (days) is - 21d on WBS: Harbour
+Pointe.2.5
+Finish Date Variance (days) is -26d on WBS: Harbour Pointe.8
+Finish Date Variance (days) is -36d on WBS: Harbour Pointe.5
+Finish Date Variance (days) is -6d on WBS: Harbour Pointe. 1.2
+Forecast Overrun
+Unit Finishes Experiencing Productivity Delays
+Normal
+Normal
+Normal
+High
+High
+North America
+PRIORITY
+High
+Normal
+Normal
+Normal
+Normal
+Normal
+Normal
+High
+High
+Current Phase
+Closed
+Closed
+Closed
+Closed
+Closed
+Closed
+Initiation
+STATUS
+Closed
+Closed
+Closed
+Closed
+Closed
+Closed
+Closed
+Closed
+Closed
+3 of 3
+8/14/2012 1:49 AM
+Planned Start
+Data Date
+06/01/2011
+06/01/2011
+
+=== PAGE 16 ===
+ORACLE
+Construction Projects
+Portfolio Counts
+Project Count: 6
+Activity Count: 608
+Issues
+Open: 24
+Opportunity: 1
+Threat: 10
+•Open
+90.91%
+100.0%
+1 of 1
+Risks
+9.091%
+8/14/2012 1:49 AM
+• Opportunity
+Threat
+
+=== PAGE 17 ===
+ORACLE®
+City Center Office Building Addition
+Document Category
+Activity Name
+Detailed Design Specifications
+Assemble Technical Data for Heat Pump
+Document Title
+Detailed Design Specification
+Design Building Addition
+Document Title
+Detailed Design Specification
+Assemble Technical Data for Heat Pump
+Document Title
+Design
+Design Building Addition
+Document Title
+Design
+8/14/2012 1:52 AM
+Document Assignments
+Deliverable Work Product
+N
+N
+WBS Name
+Design and Engineering
+Deliverable
+N
+Work Product
+N
+WBS Name
+Design and Engineering
+Deliverable Work Product
+N
+N
+WBS Name
+Design and Engineering
+Deliverable
+Work Product
+N
+N
+WBS Name
+Design and Engineering
+1 of 3
+
+=== PAGE 18 ===
+ORACLE
+Project ID: EC00515
+Project Name: City Center Office Building Addition
+Total Activities: 71
+Completed: 13
+In Progress: 3
+Report Date:
+Total Risks:
+Threats:
+Opportunities:
+Proposed Risks:
+Risk by Tolerance Threshold
+Probability
+Impacts
+Schedule
+Cost
+Tolerance
+Probability and Impact Scoring (PID)
+Risk Score is based on: Highest Impact
+Impact
+[ Severity 1 | Severity 2 | Severity 3]
+Key
+Risk Scoring Report
+8/14/20121:53 AM
+City Center Office Building Addition
+Project Summary
+Data Date: 05/01/2011
+Finish: 07/03/2013
+At Completion Cost: $745,786
+Actual Cost to Date: $124,028
+Remaining Total Cost: $621,758
+Risk Summary
+Open Risks:
+Active Risks
+Rejected (Closed):
+Managed (Closed):
+Impacted (Closed):
+
+=== PAGE 19 ===
+ORACLE®
+As of: 05/01/2011
+Project Status Report for: City Center Office Building Addition (EC00515)
+SPONSOR
+Forsyth
+BUSINESS SEGMENT
+1004050
+PROJECT MANAGER
+Thomas
+CURRENT PHASE
+Design
+DESCRIPTION
+Project is for the addition to the office building in center city. This includes design and construct work.
+START
+FINISH
+11/01/2010
+07/03/2013
+TARGET FINISH
+06/19/2013
+APPROVED BUDGET
+$734,195
+COST TO DATE
+$124,028
+AT COMPLETION
+$745,786
+% COMPLETE
+14.88%
+COST VARIANCE
+-$11,591
+ACTIVITIES COMPLETED
+13 of 71
+LABOR TO DATE
+2038 h
+PRIORITY ISSUES
+O priority of 0 issues
+OPEN RISKS
+O open of 0 risks
+LOCATION
+Europe
+PROJECT SCORE
+80
+LABOR VARIANCE
+-201.4 h
+NOTEBOOKS
+MILESTONES
+Assemble Brick Samples
+Assemble and Submit Flooring Samples
+Begin Building Construction
+Begin Structural Phase
+Building Addition Complete
+Date
+2/15/2011
+2/15/2011
+2/15/2011
+11/10/2011
+6/19/2013
+Status
+Completed
+Completed
+Completed
+Not Started
+Not Started
+
+=== PAGE 20 ===
+ORACLE
+Qualitative Risk Report
+8/14/2012 1:54 AM
+City Center Office Building Addition
+Project ID
+Project Name
+Total Activities
+Completed
+In Progress
+EC00515
+City Center Office Building
+Addition
+71
+13
+3
+Project Summary
+Data Date
+Finish
+At Completion Cost
+Actual Cost to Date
+Remaining Total Cost
+Risk Summary
+$124,028
+Risks by Tolerance Threshold
+
+=== PAGE 21 ===
+ORACLE
+City Center Office Building Addition
+Project Hierarchy Including Steps
+WBS Code
+WBS Code Name
+Activity Name(ID)
+Status
+Start
+Interior
+Finishes
+Interior Finishes
+Drywall in Offices (EC1700)
+Touch-up and Clean-up (EC1820)
+Finishes Complete (EC1840)
+Punch List (EC1850)
+Building Addition Complete (EC1860)
+Exterior Finishes
+Close-In Phase Begins (EC1590)
+Building Enclosed (EC1620)
+Foundation
+Begin Building Construction (EC1090)
+Site Preparation (EC1100)
+Excavation (EC1230)
+Install Underground Water Lines (EC1320)
+Install Underground Electric Conduit
+(EC1330)
+Form/Pour Concrete Footings (EC1340)
+Concrete Foundation Walls (EC1350)
+Form and Pour Slab (EC1360)
+Backfill and Compact Walls (EC1370)
+Foundation Phase Complete (EC1380)
+Structure
+Erect Structural Frame (EC1390)
+Begin Structural Phase (EC1410)
+Floor Decking (EC1420)
+Concrete First Floor (EC1430)
+Erect Stairwell and Elevator Walls (EC1460)
+Concrete Basement Slab (EC1470)
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Completed
+Completed
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+Not Started
+02/05/2013
+06/19/2013
+06/26/2013
+06/26/2013
+07/03/2013
+05/15/2012
+06/18/2012
+09/19/2011
+11/24/2011
+11/24/2011
+01/11/2012
+03/01/2012
+03/01/2012
+8/14/2012 1:55 AM
+Finish
+03/27/2013
+06/21/2013
+06/26/2013
+07/03/2013
+07/03/2013
+05/15/2012
+06/18/2012
+02/28/2011A 02/28/2011A
+02/23/2011A 04/18/2011A
+05/02/2011
+06/02/2011
+06/03/2011
+06/20/2011
+06/03/2011
+06/20/2011
+06/21/2011
+07/25/2011
+08/26/2011
+09/13/2011
+09/19/2011
+07/22/2011
+08/25/2011
+09/12/2011
+09/19/2011
+09/19/2011
+11/24/2011
+11/24/2011
+01/11/2012
+03/01/2012
+04/04/2012
+04/04/2012
+1 of 4
+
+=== PAGE 22 ===
+ORACLE
+8/14/2012 2:05 AM
+Login Name Personal Name
+admin
+biadmin
+user01
+user02
+admin
+biadmin
+user01
+user02
+Users
+Resource
+MathisL
+Trades
+Product Dev
+Global Profile
+<Admin Superuser>
+<Admin Superuser>
+<Admin Superuser>
+<Admin Superuser>
+Page 1 of 1
+
+=== PAGE 23 ===
+ORACLE
+8/14/2012 2:06 AM
+Template Name
+Business Process Template
+Assisted Living Facility
+IT Template
+Product Development Template
+Project Template Management
+Division
+Added By
+admin
+admint
+admin
+admin
+Date Added
+8/12/2010
+9/7/2010
+8/12/2010
+8/12/2010
+1 of 1
+
+=== PAGE 24 ===
+ORACLE
+8/14/20122:06 AM
+Profile Privileges
+Profile Scope
+Security Profile
+Security Privilege
+GLOBAL
+<No Global Privileges>
+Administrator
+Add Global Activity Codes
+Add Global Issue Codes
+Add Project Codes
+Add Resource Codes
+Add Resources
+Add/Delete Secure Codes
+Add/Edit/Delete Activity Step Templates
+Add/Edit/Delete Categories and Overhead Codes
+Add/Edit/Delete Cost Accounts
+Add/Edit/Delete Currencies
+Add/Edit/Delete Financial Period Dates
+Add/Edit/Delete Funding Sources
+Add/Edit/Delete Global Activity and Assignment Layouts, Views and Filters
+Add/Edit/Delete Global Calendars
+Add/Edit/Delete Global Dashboards
+Add/Edit/Delete Global Portfolios
+Add/Edit/Delete Global Project, WBS and Portfolio Layouts, Views and Filters
+Add/Edit/Delete Global Reports
+Add/Edit/Delete Global Resource and Role Teams
+Add/Edit/Delete Global Scenarios
+Add/Edit/Delete Issue Forms
+Add/Edit/Delete Microsoft Project Templates
+Add/Edit/Delete OBS
+Add/Edit/Delete Project Templates
+Add/Edit/Delete Rate Types and Units of Measure
+Add/Edit/Delete Resource Calendars
+1 of 14
+
+=== PAGE 25 ===
+ORACLE
+8/14/20122:06 AM
+Profile Privileges
+Profile Scope
+Security Profile
+Security Privilege
+Add/Edit/Delete Resource Curves
+Add/Edit/Delete Risk Categories, Matrices, and Thresholds
+Add/Edit/Delete Roles
+Add/Edit/Delete Security Profiles
+Add/Edit/Delete Timesheet Period Dates
+Add/Edit/Delete User Defined Fields
+Add/Edit/Delete User Interface Views
+Add/Edit/Delete Users
+Administer Global External Applications
+Administer Scheduled Services
+Approve Resource Timesheets
+Assign Secure Codes
+Delete Global Activity Codes
+Delete Global Issue Codes
+Delete Project Codes
+Delete Resource Codes
+Delete Resources
+Edit Application Settings
+Edit Global Activity Codes
+Edit Global Change Definitions
+Edit Global Issue Codes
+Edit Global Tracking Layouts
+Edit Project Codes
+Edit Projects from Scorecards
+Edit Resource Codes
+Edit Resources
+Edit Secure Codes
+Import Project Management XER, MPP, MPX, and P3
+Import XLS
+Import XML
+2 of 14
+
+=== PAGE 26 ===
+ORACLE
+8/14/20122:06 AM
+Profile Privileges
+Profile Scope
+Security Profile
+Security Privilege
+Provision Users from LDAP
+View All Global/Project Data via SDK
+View Resource Role Proficiency
+View Resource and Role Costs/Financials
+View Secure Codes
+Executive / Stakeholder
+Add Project Codes
+Add Resource Codes
+Add/Delete Secure Codes
+Add/Edit/Delete Funding Sources
+Add/Edit/Delete Global Activity and Assignment Layouts, Views and Filters
+Add/Edit/Delete Global Portfolios
+Add/Edit/Delete Global Project, WBS and Portfolio Layouts, Views and Filters
+Add/Edit/Delete Global Resource and Role Teams
+Add/Edit/Delete Resource Curves
+Add/Edit/Delete Security Profiles
+Add/Edit/Delete User Defined Fields
+Add/Edit/Delete Users
+Approve Resource Timesheets
+Assign Secure Codes
+Delete Project Codes
+Delete Resource Codes
+Edit Global Tracking Layouts
+Edit Project Codes
+Edit Projects from Scorecards
+Edit Resource Codes
+Edit Secure Codes
+3 of 14
+
+=== PAGE 27 ===
+ORACLE
+Calendar Use
+Calendar Name
+Corporate - Standard Full Time (Default Calendar)
+Project ID
+Project Name
+CORP00591 Order Management Redesign
+CORP00424
+Lead Qualification Project
+CORP00307 Online Invoice Generation Project
+CORP00103 Order Fullfillment Phase I|
+CORP00768 Logistics Reengineering Program
+CORP00118 GIS Interface Project
+CORP00712 Cash Flow BI Project
+CORP00595 Nexus Project
+CORP00852 eBusiness Transformation Program
+CORP00384 Alliance Portal Integration Project
+PROD00914
+Project Nano
+PROD00414
+4G Tablet Project
+PROD00111
+Magna Pad Product Test
+PROD00228 Xstar Release I|
+2 of 10
+Resource ID
+AndersonG
+Vincentl
+CharlesM
+ZhuS
+LaffertyV
+BennettC
+PaxsonD
+SinghD
+SharpeD
+ITCon
+LIR
+RiceB
+ChopraA
+AbrahamM
+8/14/2012 2:17 AM
+Resource Name
+Glen Anderson, VP
+Development
+lan Vincent
+Mandy Charles, VP IT
+Ops
+Shannon Zhu
+Vanessa Lafferty
+Carina Bennett
+Dan Paxson
+Deepak Singh
+Dan Sharpe
+IT Consultant
+Roy Li
+Barbara Rice, PMO
+Director
+Amit Chopra
+Molly Abraham
+

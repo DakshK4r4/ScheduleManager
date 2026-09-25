@@ -1,0 +1,526 @@
+
+=== PAGE 1 ===
+International Journal of Research in Advent Technology, Vol.6, No.7, July 2018 
+E-ISSN: 2321-9637 
+Available online at www.ijrat.org 
+ 
+1659 
+ 
+Project Planning, Scheduling, Tracking and Cost 
+Control – A Case Study for Residential (G+4) Building 
+by Using Software Primavera P6 
+ 
+Shahnawaz Naseem1, Akash Agrawal2, Naresh Harry3 
+1-M. Tech Student, 2,3-Assistant Professor 
+Department of Civil Engineering, Shepherd Institute of Engineering & Technology 
+Sam Higginbottom University of Agriculture, Technology and Sciences, Allahabad, India 
+shah92.sn@gmail.com,8574370739 
+ 
+Abstract- The construction industry has been rising speedily from the early da ys. One of the developments was 
+planning, scheduling, tracking and costing by using software. Proper planning, scheduling, costing and 
+application are the major constraint in construction industry. It is very essential in construction projects for 
+reducing cost and controlling delays of the project. Noteworthy amounts of time, money, resources are washed 
+out each year in a construction industry due to wrong planning and scheduling. 
+        The software used for this study is Primavera P6, this tool is opera tes throughout from planning phase to 
+scheduling of a project, it reduced gigantic quantity of paperwork. Make available good planning, proper 
+management, acceptable flow of resources to a project cannot involuntarily achieve favored result. An alarming 
+method must be present which can aware the team about its promising achievement and breakdown all over the 
+project. Due to unseemly scheduling, irregular monitoring and controlling of ongoing activities huge amount of 
+time and resources is wasted every year or we can in every construction projects. In the present work, study is 
+carried out on residential (G+4) apartment. This study covers up the progression of planning, scheduling, 
+tracking and controlling of activities.. 
+Keywords- Planning; Scheduling; Tracking; Project Planning Software; Primavera. 
+ 
+1. INTRODUCTION 
+In this present situation, construction is being greater 
+than before or we can say we are living in concrete 
+jungle. With globalization the construction projects 
+have turn into massive and complex. Unlike global 
+association manages the constructions each day and 
+which has turned into a most vital piece of business. In 
+the older days the software were not used in 
+construction schemes no proper planning or 
+scheduling was part of constructional  activities and 
+projects ar e freely started by contractor and planning 
+was done by tender. Now a day, architectural planning 
+is done with the help of much software but for the 
+starting there is not any accurate management was 
+done which leads for the completion of work. Thus 
+this ef fort is made to achieve exact method over the 
+construction activities with the use of software. 
+Primavera P6 is a progress computer built -in 
+undertaking project management tool. As we know 
+India is prosperous in construction industry so we 
+should be well-known with tools like primavera which 
+is greatly advance management tool with recorded 
+data base ORACLE this tool is web measurable for 
+modification in an any situation in management 
+activities this tool work for multi project at a time can 
+be monitor and c ontrol all the projects proper 
+management is required with official recognition and 
+this can be possible if we know primavera tool 
+completely and accurately. 
+1.1.  Project Planning  
+Generating the project plan is the first thing you 
+should do when taking responsibility any kind of 
+project. However, many people are unsuccessful to 
+grab the value of a plan in saving time, money, and 
+many problems. The project management methods of 
+planning and scheduling are tools and strategy, which 
+are used to figure the p roject. The concluding point of 
+a construction project requires the sensible scheduling 
+and allocation of on hand resources. Man power, 
+money, equipment, and material are major project 
+resources that compel close management 
+concentration. The supply and av ailability of these 
+resources close not often be taken approved because of 
+seasonal shortages, labor quarrels, cash flow, and 
+equipment collapse effecting demands, postponed 
+deliveries, and a mass of related doubts. 
+1.2. Scheduling 
+Sub-headings should be typeset in boldface and 
+capitalize the first letter of the first word only. Section 
+number to be in boldface roman. 
+1.3.  Cost Control 
+Cost overrun is the one the main challenge for 
+construction industry. It occurs near about in every 
+construction project and varies very much from 
+project to project. So it is necessary to target the actual 
+=== PAGE 2 ===
+International Journal of Research in Advent Technology, Vol.6, No.7, July 2018 
+E-ISSN: 2321-9637 
+Available online at www.ijrat.org 
+ 
+1660 
+ 
+causes of cost overruns in order to reduce the delays 
+and rising cost in any construction project. Cost 
+overrun is defined as excess of actual cost over  
+budget.  Cost overrun is also sometimes called cost 
+escalation, cost increase or budget overrun. Cost 
+overrun is defined as the change in contract sum 
+separated by the original contract award amount. 
+Construction projects endure from cost overruns due 
+to a variety of factors. 
+1.4.  Tracking 
+To know the project has been executed according 
+to the planning, tracking has been takes place. 
+Tracking helps to stick to the plan during 
+execution. The tracking is the process of analyses 
+the updated schedule whether the cost and units of 
+the project are beyond or ahead or equal of the 
+planning. Tracking is comes under the process of 
+monitoring and controlling of the construction 
+project. Tracking of the project can be done after 
+updating the project by monitoring. If the p roject 
+is deviated from the schedule or cost it can easily 
+be identified and resolved. 
+(1) Tracking of the construction projects involves 
+following steps: 
+(2) Collecting data of the Project from the 
+Organization. 
+(3) Entering the details of the Project in Primavera. 
+(4) Monitoring the execution of the Project. 
+(5) Entering the planned and the actual Cost 
+(6) Tracking the Project 
+(7) Forecasting the Project 
+Report and Conclusion 
+2. PRIMAVERA P6 
+Primavera P6 is project management software 
+developed by Oracle. This software is mainly used f or 
+project management and helps the users to manage 
+projects of any range. Primavera P6 handles large 
+scale projects which are cloud based, and easy to use 
+solution for worldwide planning, managing and 
+executing project. Primavera gives project manager’s 
+and scheduler’s opportunity to manage highly 
+sophisticated and multifaceted projects. Primavera P6 
+is high end project management software which 
+provides enterprise-wide solution. It helps in reducing 
+costs, delivering the project on the projected time by 
+streamlining and coordinating with the management 
+level changes. This software optimizes the overall 
+resources so that the project runs efficiently no matter 
+how big the size of the project is. It is designed to 
+manage a large number of projects at a time f or an 
+organization. By using Primavera P6, one can 
+simultaneously plan major project strategies and 
+control the minute details to finish the project. 
+3. OBJECTIVE OF STUDY 
+The objectives of this study are: 
+1. To identify construction sequence for a residentia l 
+building construction. 
+2. To work out the practical durations required to carry 
+out the activities. 
+3. To identify scheduling technique used by the 
+organization in developing plan and scheduling. 
+4. To develop scheduling using Primavera project 
+planner’s software. 
+5. To track the project and analyze the reasons for 
+delays, and increase in estimated budget etc. 
+6. To investigate defects in the planning and 
+scheduling procedure of the organization, and suggest 
+suitable improvements in their methods. 
+4. RESEARCH METHODOLOGY 
+Firstly data are taken from construction site to put in a 
+software and study directly. For the research intention, 
+(G+4) residential building apartment is taken as a case 
+study. 
+The taken data will be explore in Primavera software, 
+tracking of the project will be done and all the reports 
+and results generated from the software will be studied 
+and communications with the organization will be 
+done on the subject of selection of the planning 
+process and software to be used in their upcoming 
+projects. 
+ 
+The data collection has been taken in three ways: 
+ Daily progress reports (DPR) 
+ Work output of labor 
+ Activities with their planned duration 
+ 
+4.1 Project Details:- 
+ 
+4.2 Project Plan:- 
+ 
+ 
+ 
+ 
+Project Name Hakeem Aghghan Apartment 
+Type G+4 
+Client Mr. Abbas Raza 
+Builder Mr. Aftab Ahmad 
+Site location Ranimandi, Allahabad 
+Built up area 646 sq.ft. 
+Project duration 1year 
+=== PAGE 3 ===
+International Journal of Research in Advent Technology, Vol.6, No.7, July 2018 
+E-ISSN: 2321-9637 
+Available online at www.ijrat.org 
+ 
+1661 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+=== PAGE 4 ===
+International Journal of Research in Advent Technology, Vol.6, No.7, July 2018 
+E-ISSN: 2321-9637 
+Available online at www.ijrat.org 
+ 
+1662 
+ 
+5. RESULTS & DISCUSSION 
+Daily progress reports:- 
+Below the DPR consist of in depth description of the 
+work done, labor and resources. All the DPR from the 
+first day of project till now have been collected. 
+ 
+EDIFICE CONSULTANTS 
+NAME OF SITE: HAKEEM AGGHAN APARTMENT, AT RANIMANDI, ALLAHABAD DATE: 23-11-2017 
+DAILY PROGRESS REPORT 
+NO. DESCRIPTION QUANTITY UNIT LABOUR NOS 
+1 PLINTH BEAM SHUTTERING WORK IS COMPLETED.   MASON 0 
+2 PLINTH BEAM SHUTTERING WORK IS CHECKED AS PER WORKING DRAWING.   M/C 7 
+3 LIFT RAFT PARDI SHUTTERING WORK IN PROGRESS.   F/C 6 
+4 CURING WORK FOR LIFT RAFT, FOOTING, STUB COLUMN COMPLETED.   SUPERVISOR 1 
+5 FIRST SLAB COLUMN STEEL ERECTION WORK IN PROGRESS.   CARPENTER 3 
+6 PLINTH BEAM STEEL ERECTION WORK IS COMPLETED.   HELPER 3 
+7 PLINTH BEAM GROUND AREA COMPACTION WORK IN PROGRESS.   FITTER 3 
+8 PLINTH BEAM STEEL CHECKED AS PER DRAWING.   HELPER 3 
+9 B' BLDG. SIDE & BANDH SIDE BACKFILLING BY JCB. TIME 9:20 A.M. TO 12:50 P.M. & 
+2:00 P.M. TO 6:00 P.M. 7.3 HRS SECURITY 1 
+10 PLITH BEAM CASTING WORK IS COMPLETED. 5.07 CUM DEPART M\C 1 
+11 VISITED TO ARCHITECT FOR DRAWING HE GAVE ONLY PLINTH BEAM WORKING 
+DRAWING SOFT COPY.   DEPART F\C 0 
+12 BIG BOLDER CONVERTED IN RUBBLE WORK IS COMPLETED 640 NOS BOLDER M/C 2 
+13 MYCEM COMPANY QC ENGINEER VISITED ON SITE & ONE TRIAL MIX CONCRETE 6 
+NOS.CUBE CASTED. 
+    
+MATERIAL GRADE BALANCE  CONSUMPTION PLINTH BEAM    
+CEMENT 53 410 BAGS  CEMENT 34 BAG   
+  34 BAGS  CRUSHED SAND 
+92.11 CFT   
+BALANCE  376 BAGS  20mm METAL 
+126.90 CFT   
+ 
+Work Output of labor:- 
+Work output is the quantity of work done by a labor in 
+a day. It is used to compute duration necessary for 
+activity based on the existing manpower on site. 
+Sr. 
+No
+. 
+Particular of 
+Item 
+Quantity done per 
+day by one person 
+M2 M3 
+1 
+Brickwork in Lime or 
+Cement Mortar in 
+Foundation Plinth 
+ 1.25 
+2 
+Brickwork in Lime or 
+Cement Mortar in Super 
+Structure 
+ 1 
+3 
+Coursed Rubble Stone 
+masonry including 
+dressing 
+ 0.8 
+4 Cement concrete 1:2:4 5 
+5 RCC Work  3 
+6 12 mm Cement Plaster 8  
+7 White washing or Color 
+washing 200  
+8 
+Painting and Vanishing 
+doors and windows 
+(1coat) 
+25  
+9 Painting Large surface 
+(1 coat) 35  
+10 Distempering (1coat) 35  
+ 
+Activities with their planned duration:- 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig (a) Updation of the Project 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig (b) Tracking Cost of the Project 
+ 
+=== PAGE 5 ===
+International Journal of Research in Advent Technology, Vol.6, No.7, July 2018 
+E-ISSN: 2321-9637 
+Available online at www.ijrat.org 
+ 
+1663 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig (c) Scheduling of the apartment building 
+6. CONCLUSION 
+ Habitual monitoring of the work under 
+implementation must be done at least within week 
+in order to take sufficient actions against 
+improbability. 
+ Primary baseline and Gantt chart created makes 
+easy to recognize critical path and monitoring task 
+against it improvement extremely easy by 
+observing colors of bars.  
+ Carrying out review to view divergence in 
+schedule helped and control against planned 
+schedule is just piece of cake with this software. 
+ WBS helped to systematize, assemble and know 
+the work achievement in percentage at every 
+portions/nodes in it. 
+ Appropriate co -ordination and ease of statement 
+of running of assignment. 
+ In this project by appl ying booming and fast 
+tracking method duration of chosen events is 
+compact to reschedule within the baseline. 
+ Using primavera technique of resource 
+compulsion, compression of various activities is 
+done by increasing working hours.  
+ Primavera (P6) proved to  be a best tool for 
+scheduling, monitoring and controlling and shows 
+its effectiveness in only if best results with less 
+attempt of user by preventing massive volume 
+paperwork. 
+ CONCLUSION(A.1) 
+REFERENCES  
+[1] Tom, A. F.; Paul S. (2013): Project Monitoring 
+and Control using Primavera, Vol. 2, Issue 3 
+[2] Hussain, S.M.A.M.; Chakravarthy, M. M.; Fatima  
+(2016): Scheduling Of an Residential Building 
+Using Project Management Techniques. 
+[3] Veena, H. C.; Vijay, K.; Rajendra, S.; Kumar, R. 
+K. (2016): Schedule Control of an A partment 
+Building using Primavera Techniques, Vol. 5 
+Issue 06 
+[4] T.Subramani, T.; Lishitha, P.T.; Kavitha, M. 
+(2014): Time Overrun and Cost Effectiveness in 
+the Construction Industry, Vol. 4, Issue 6 
+[5] Mistry, N.M.; Kanani , M.A.; Sharma, N.D. 
+(2015): Application of Primavera Software For 
+Scheduling Of Row House To Complete Project 
+On Time.  
+[6] Fischer, M. (2010) :Combining different Project 
+Modelling approaches for effective support of 
+multi-disciplinary engineering tasks, CA 94302-
+4020, USA. 
+[7] Zanen, P. & Hartmann, T. (2010) :The 
+Application of Construction Project Management 
+tools an overview of tools for Managing and 
+Controlling Construction Projects. 
+[8] Pramilaadavi & Pethesarang, (2012): Application 
+of Primavera in Construction Industry. 
+[9] Chitkara, K.K. (2006): Construction Project 
+Management, Tata McGraw-Hill Publication. 
+ 
+ 

@@ -1,6 +1,5 @@
-from __future__ import annotations
-
-from typing import Dict, List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple
 from app.models.canonical import (
     ActivityStatus,
     CanonicalActivity,
@@ -11,6 +10,23 @@ from app.models.canonical import (
     RelationshipType,
 )
 from app.parsers.base import BaseParser, ParserError
+
+P6_CONSTRAINT_MAP = {
+    "CS_MS": "MANDATORY_START",
+    "CS_MF": "MANDATORY_FINISH",
+    "CS_MSO": "MANDATORY_START",
+    "CS_MFO": "MANDATORY_FINISH",
+    "CS_SNET": "START_NO_EARLIER",
+    "CS_SNLT": "START_NO_LATER",
+    "CS_FNET": "FINISH_NO_EARLIER",
+    "CS_FNLT": "FINISH_NO_LATER",
+    "MANDATORY_START": "MANDATORY_START",
+    "MANDATORY_FINISH": "MANDATORY_FINISH",
+    "START_NO_EARLIER": "START_NO_EARLIER",
+    "START_NO_LATER": "START_NO_LATER",
+    "FINISH_NO_EARLIER": "FINISH_NO_EARLIER",
+    "FINISH_NO_LATER": "FINISH_NO_LATER",
+}
 
 
 class XerParser(BaseParser):
@@ -59,8 +75,10 @@ class XerParser(BaseParser):
 
         # 1. Parse Project
         project_rows = tables.get("PROJECT", [])
+        target_proj_id = ""
         if project_rows:
             p_row = project_rows[0]
+            target_proj_id = p_row.get("proj_id", "").strip()
             proj_code = p_row.get("proj_short_name") or filename.rsplit(".", 1)[0]
             proj_name = p_row.get("proj_short_name") or p_row.get("project_name") or proj_code
             plan_start = self.parse_datetime(p_row.get("plan_start_date") or p_row.get("target_start_date"))
@@ -115,12 +133,53 @@ class XerParser(BaseParser):
                 )
             )
 
+        # 2b. Parse Activity Codes (ACTVTYPE, ACTVCODE, TASKACTV)
+        actv_type_rows = tables.get("ACTVTYPE", [])
+        actv_type_id_to_name: Dict[str, str] = {}
+        for r in actv_type_rows:
+            tid = r.get("actv_code_type_id", "").strip()
+            tname = r.get("actv_code_type_name", "").strip() or r.get("actv_code_type_scope", "").strip()
+            if tid and tname:
+                actv_type_id_to_name[tid] = tname
+
+        actv_code_rows = tables.get("ACTVCODE", [])
+        actv_code_id_to_val: Dict[str, Tuple[str, str]] = {}
+        for r in actv_code_rows:
+            cid = r.get("actv_code_id", "").strip()
+            tid = r.get("actv_code_type_id", "").strip()
+            cname = r.get("actv_code_name", "").strip() or r.get("short_name", "").strip()
+            tname = actv_type_id_to_name.get(tid, "Code")
+            if cid and cname:
+                actv_code_id_to_val[cid] = (tname, cname)
+
+        task_actv_rows = tables.get("TASKACTV", [])
+        task_id_to_codes: Dict[str, Dict[str, str]] = defaultdict(dict)
+        for r in task_actv_rows:
+            tid = r.get("task_id", "").strip()
+            cid = r.get("actv_code_id", "").strip()
+            if tid and cid in actv_code_id_to_val:
+                tname, cval = actv_code_id_to_val[cid]
+                task_id_to_codes[tid][tname] = cval
+
+        # Collect TASKMEMO
+        task_id_to_memos: Dict[str, List[str]] = defaultdict(list)
+        for memo_row in tables.get("TASKMEMO", []):
+            t_id = memo_row.get("task_id", "").strip()
+            memo_txt = memo_row.get("task_memo", "").strip()
+            if t_id and memo_txt:
+                task_id_to_memos[t_id].append(memo_txt)
+
         # 3. Parse Activities
         task_rows = tables.get("TASK", [])
         task_id_to_code: Dict[str, str] = {}
         canonical_activities: List[CanonicalActivity] = []
 
         for row in task_rows:
+            # Filter by project ID if multiple projects exist in XER export
+            row_proj_id = row.get("proj_id", "").strip()
+            if target_proj_id and row_proj_id and row_proj_id != target_proj_id:
+                continue
+
             task_id = row.get("task_id", "").strip()
             task_code = row.get("task_code", "").strip() or f"ACT-{task_id}"
             if task_id:
@@ -154,6 +213,14 @@ class XerParser(BaseParser):
             orig_dur = round(target_hr / 8.0, 2) if target_hr is not None else None
             rem_dur = round(remain_hr / 8.0, 2) if remain_hr is not None else orig_dur
 
+            # Constraints
+            raw_cstr_type = row.get("cstr_type", "").strip()
+            cstr_type = P6_CONSTRAINT_MAP.get(raw_cstr_type, raw_cstr_type) if raw_cstr_type else None
+            cstr_date = self.parse_datetime(row.get("cstr_date"))
+
+            # Activity codes
+            act_codes = dict(task_id_to_codes.get(task_id, {}))
+
             canonical_activities.append(
                 CanonicalActivity(
                     activity_code=task_code,
@@ -169,6 +236,10 @@ class XerParser(BaseParser):
                     remaining_duration=rem_dur,
                     percent_complete=pct,
                     calendar=row.get("clndr_id"),
+                    constraint_type=cstr_type,
+                    constraint_date=cstr_date,
+                    activity_codes=act_codes,
+                    notes="\n".join(task_id_to_memos[task_id]) if task_id in task_id_to_memos else None,
                 )
             )
 

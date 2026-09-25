@@ -1,0 +1,432 @@
+
+=== PAGE 1 ===
+Journal of Economics, Finance and Management Studies 
+ISSN (print): 2644-0490, ISSN (online): 2644-0504 
+Volume 4 Issue 11 November 2021 
+Article DOI: 10.47191/jefms/v4-i11-14, Impact Factor: 6.228 
+Page No. 2228-2235 
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2228   
+Construction Project Planning and Scheduling: A Case of Inlet  
+Separator Fabrication  
+Wiwik Handayani1, Delly Nofiani2 
+  
+1,2Department of management, Faculty of Business and Economics, Universitas Pembangunan Nasional Veteran Jatim , Surabaya, 
+Indonesia 
+ 
+ABSTRACT: Project construction activities must be analyzed from the planning stage to the execution stage so that they can be 
+achieved optimally and achieve the best performance point. Project planning relies on a project scheduling system, of course 
+requiring updates and modifications that show the project conditions in real time. The aims of this paper is propose a project 
+scheduling system that can accommodate projects that have large -scale activities by proposing scheduling and risk analysis using 
+Primavera P6 and Primavera risk analysis. A case study was conducted on the construction of an inlet separator fabrication 
+project in Batam, Indonesia. The proposed method aims to calculate the optimal project completion time through automatic 
+scheduling with p rimavera software. The method demonstrates practical value for project managers in identifying the shortest 
+project duration and estimating the most optimal time duration for carrying out activities. In addition, using automatic 
+scheduling can provide more complex information including successors and predecessors of activities, critical times, estimates of 
+the overall duration of the project. 
+KEYWORDS- Optimization, Schedule generation, Construction, Project Management, Primavera  
+I. INTRODUCTION  
+Construction activities have existed since humans began to build their homes, then created many wonders in the world and 
+produced many facilities for the benefit of mankind. The construction industry is an important element for the country's 
+economy, therefore constr uction industry projects must implement effective project management (Kohli, 2017). The 
+construction industry, especially in Indonesia, has faced a very competitive business challenge, the more complex projects 
+carried out and highly demanding clients are one of the main problems for contractors (Hartono et al., 2017). Thus, companies 
+must be able to manage the main problems for the organization to create project success and achieve the best performance 
+point. Traditional indicators of success in project ma nagement refer to the owner’s quality requirements, cost compliance and 
+delivering the project on time (Locatelli et al., 2017; Wang et al., 2021). But other researchers also argue that the nature of 
+project success is multidimensional with different criteria and only a few can be clearly measured (Williams, 2016).  
+Indonesia has various types of construction projects carried out by firm on a regular basis, for example, offshore and onshor e oil 
+drilling construction projects. The construction project certai nly cannot be separated from the contractor firm that helps to 
+facilitate the supporting components in oil drilling. The components must have criteria that are in accordance with the 
+specifications and standards required, for example the product must last more than 10 years, be able to withstand strong loads 
+and withstand heat and have international standards. The components or tools needed by the company in carrying out drilling 
+include land rig upgrade, FDPSO modules, vessel (inlet separator), jack up leg s, and fuel gas project. With the diverse needs for 
+tools needed by offshore or onshore firm in carrying out oil drilling, of course, contractor firm have projects that are in s uch a 
+complex way or can be called mega projects. To meet this demand, the cons truction projects that are carried out certainly 
+require careful planning, scheduling, and project execution in order to achieve timely project completion performance.  
+The construction industry, especially in Indonesia, has faced a very competitive busines s challenge, the more complex projects 
+carried out and highly demanding clients are one of the main problems for contractors (Hartono et al., 2017). Thus, companies  
+must be able to manage the main problems for the organization to create project success. Tr aditional indicators of success in 
+project management refer to cost compliance, on time, and according to specifications(Locatelli et al., 2017). But other 
+researchers also argue that the nature of project success is multidimensional with different criteri a and only a few can be clearly 
+measured (Williams, 2016). Therefore, it is necessary to have the right analysis to examine and review the project scheduling  
+=== PAGE 2 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2229   
+process as well as the estimated time specified in the implementation of activities using computer ized-based technology, such 
+as Primavera P6 and Primavera Risk Analysis to maximize activities to achieve superior project success.  
+Construction project is a managerial environment created to create one or more specific products according to business 
+demands (Berjis et al., 2020). The need for change in construction practices has been discussed and attracted the attention of 
+many scholars and practitioners (Le & Nguyen, 2021). Construction project involves a lot of activity and needs to be planned and 
+estimated correctly to find out the time needed to complete the project. It is necessary to estimate the completion of the 
+project so that it can be seen how big the chance of the project will be completed according to the schedule that has been se t 
+(Heizer et al., 2017). Several traditional methods have been developed to deal with the implementation of construction projects, 
+including using the CPM (Critical Path Method) and PERT (Project Evaluation and Review Technique) method (Heizer et al., 
+2017). By using this method, it can be seen that every activity that is in the critical path, activities on the critical path are 
+activities that must be monitored in such a way because if they are left behind or late, it will have an impact on delays in the 
+completion of the project as a whole. In addition, by using this method, we can also see how big the opportunities will be in 
+pursuing the implementation of projects that are in accordance with the target. By knowing the opportunities that exist, it w ill 
+become a material for consideration for the project team to decide what efforts will be made in pursuing the project completion 
+target. 
+Planning and scheduling are very important aspects of implementing construction projects (Athani & Kulkarni, 2018). A project  
+involves a lot of activity and needs to be planned and estimated correctly to find out the time needed to complete the project. 
+Previous research (eg, Polekar & Salgude, 2015) revealed that traditional project management systems could no longer meet the  
+demands of  the current project because most information and data about a project were constantly changing. According to 
+Gharaibeh (2014) revealed that in the current era the industrial revolution in the field of computer software has been very 
+rapidly developing, ma king managers working in engineering industries such as the demand and gas industries can no longer 
+ignore facilities and equipment in computer technology if they want superior. Based on the findings of previous studies (eg. 
+Gharaibeh, 2014); Polekar & Sal gude, 2015), this study aims to provide alternative rock by adopting the role of computer 
+software to overcome the limitations of traditional project management systems. Various software developed to improve 
+various projects, ranging from design, marketing , architecture, engineering, construction to cost estimation, and scheduling 
+(Gharaibeh, 2014). This study will discuss software used in project scheduling activities related to Primavera P6 software an d 
+very effective risk analysis used to schedule projec t activities so that it can be used to improve projects with resources and 
+scheduling it's easier to watch as you start the project. To fulfill the research objectives, this study will discuss project  
+completion time estimates after rescheduling and discus sion of critical activities and completion of project approvals. In the first 
+part of this paper, the introduction will be related to project scheduling, the second part will discuss the literature revie w that 
+supports the implementation of project managem ent, the third part will present the research methods and the sections related 
+to the research findings. This research will conclude with managerial implications and limitations of subsequent research and  
+research. 
+ 
+II. LITERATURE REVIEW 
+The construction industry is largely project-based, with current production theory and practice still heavily influenced by project 
+management concepts and techniques that are certainly growing with modernization (Belayutham et al., 2021; Khoso et al., 
+2021). Project management  requires knowledge, skills, tools, and techniques for project activities that meet project 
+requirements (PMBOK, 2013), project management will produce results for the interest and manage various activities that must 
+be addressed (Bordley et al., 2018). Ac cording to Bordley, Keisler, & Logan (2018), project management must provide support 
+for all work activities that must be completed to achieve project results, and determine which activities should be carried o ut 
+before other activities begin.  
+In project management practice, the delay in completing the project is a major problem that is needed and needs to be 
+managed to improve the final project (Guida & Sacco, 2019).  Delayed schedule is a traditional problem in almost all projects  and 
+sometimes delays unavoidably lead to serious conflicts between owners and general contractors in construction projects (Guida 
+& Sacco, 2019; Türkakın et al., 2020). According to Heizer et al., (2017) PERT and CPM had been developed in the 1950s to help 
+managers schedule, check and control large complex projects. CPMs that lend at the time spent by the project by removing 
+additional resources on critical path activities or transferring resources from non -critical paths (Bordley et al., 2018). The CPM 
+assumes nothing has been agreed to in the duration of each activity (and does not have priority in the completion of one of t he 
+project lines) (Heizer et al., 2017).  
+=== PAGE 3 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2230   
+PERT generalizes CPM by acknowledging the uncertainty in the time needed to complete various project activities (Bordley et a l., 
+2018). PERT proposes to anticipate this uncertainty by using a beta distribution to illustrate the unc ertainty of completion of 
+activities (Heizer et al., 2017). However, in the rapid advances in technology has shifted practical project management based  on 
+documents to be computerized, for example by using software to schedule activities.  
+ 
+III.  RESEARCH METHODS 
+This research is a type of applied research, which uses observations and case studies in data collection (Cooper & Schindler,  
+2014) that support to provide input for professionals based on the results of the study. This research takes a case study, in  which 
+case studies were taken in this study discuss one of the companies incorporated in the oil and gas construction industry in 
+Indonesia, especially for inlet separator oil and gas projects discussed in Riau Islands, Batam.  
+This study took a sample of re search on the island of Batam on the grounds that this island is one in Indonesia which has many 
+industrial sectors that are clustered and the only province that has existed in the era of free trade. This study examined th e 
+scheduling of the work on oil an d gas manufacturing projects carried out by PT. CTE in 2014, and made observations to get 
+further insight into the phenomena that occurred in the firm within a period of 1 month in January - February 2015. To analyze 
+the findings data this research will be  conducted using CPM analysis and projects, critical paths, and probabilities duration of 
+activity.  Before conducting an analysis using CPM and PERT, this study first determines the work breakdown structures, this is to 
+make it easier for the scheduling team to formulate the activities to be carried out, especially in automatic scheduling.  
+ 
+IV.  RESULT AND DISCUSSION 
+This research is focused on PT. CTE is a subsidiary of PT. CT Tbk, which was founded in 1983 and listed on the Jakarta stock 
+exchange in 1989. PT. CTE was established in 2007 and is located in the Kabil free trade zone, Batam island, Indonesia. PT. CTE is 
+engaged in the construction industry (engineering, procurement, and construction). This firm fabrication for the oil and gas 
+industry or is refer red to as a client for Pertamina, Petronas etc. As for the products produced by PT. CTE consists of land rig 
+upgrades, FDPSO modules, vessels, Jack up tutoring etc. For research needs, this research will discuss one of the projects th ey 
+are working on, nam ely inlet separator projects (oil and gas filters). The results of this study will consistof three parts, namely, 
+workbreak down structures (WBS), critical path analysis (CPM) and program evaluation and review techniques (PERT) using 
+primavera P6 and risk analysis. 
+Work Breakdown Structures 
+The WBS is a basic tool for specification and categorization of work elements in project management to organize and define th e 
+total scope of a project into smaller, more manageable components (PMBOK, 2013; Toutounchian et al., 2018). Using WBS is the 
+best alternative in organizing activities and sub -activities (Toutounchian et al., 2018). In the context of the WBS, work refers to 
+work products or deliverables that are the result of an activity and not the activity itself  (PMBOK, 2013). Below can be seen in 
+Figure 1 WBS for the inlet separator project that has been prepared.  
+ 
+Figure 1. Work breakdown structures 
+Source: Processed data 
+=== PAGE 4 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2231   
+Critical Path Method (CPM) 
+In this section will show the results of the analysis using th e CPM method in making estimates related to the completion of the 
+project, estimated completion time which will be discussed in table 1 and figure 2. Table 1 show the original scheduling for inlet 
+separator project using ms.excel. the project with an agree ment total duration is 129 days, the project estimation due date and 
+completed on August 28, 2014. However, due to some things happening with high uncertainty, project completion was delayed 
+until 146 days on September 22, 2014. The results of the study sh ow that there is a mismatch in the actualization process of 
+activities caused by various reasons, such as no approval will be made on projects that involve too many documents or problem s 
+with material delays that cannot be carried out at the agreed time. T he findings of this study compared to previous studies by 
+Polekar & Salgude (2015) that support industries in the globalization era are increasingly widespread and complicated if plan ning 
+that requires a lot of documents will cause project delays. It is ho ped that previous research (see, Kohli, 2017; Polekar & 
+Salgude, 2015) supports the use of software to provide good planning, the right organization, the right resources for a proje ct 
+that cannot obtain the desired results. 
+Next, to see the effectiveness o f scheduling. We use automatic scheduling using primavera P6 to see the effectiveness of 
+scheduling estimates and re -planning of activities that can be prioritized in the project. The rescheduling results can be seen in 
+Figure 2. Figure 2 shows the results  of scheduling using the Primavera program which gets the estimated time to support the 
+project and has an optimal time of 119 days on August 14, 2014.  By better scheduling and discussing other important crucial 
+aspects, so do the reports need to complete  one activity. To find out the amount of time needed, specifically for engineering 
+projects, deepening and various suggestions from experience are more expert in the field. This is because projects that are d one, 
+and not repeatedly made based only by clien t requests. Even so, various activities carried out are activities that are similar to, 
+according to the specifications desired by the client. 
+ 
+Table 1. The Original Sequence of Work on the Pressure Vessel Inlet Separator Project  
+ID Task Name Predecessor Duration Start Finish 
+1.  A087 - GLOBAL 
+PROCESS SYSTEM 
+INLET SEPARATOR 
+ 129 days Fri 28/02/14 Thu 28/08/2014 
+2.  Contract Award 1 2 days Mon 21/04/14 Tue 22/04/14 
+3.  PO 2 1 day Mon 21/04/14 Mon 21/04/14 
+4.  Kick Of Meeting 2 1 day Tue 22/04/14 Tue 22/04/14 
+5.  Engineering 4 14 days Thu 24/04/14 Fri 09/05/14 
+6.  Engineering Design 5 14 days Thu 24/04/14 Mon 05/05/14 
+7.  Drawing Approved 5 10 days Tue 29/04/14 Fri 09/05/14 
+8.  QA/QC 7 19 days Wed 30/04/14 Wed 21/05/14 
+9.  Procurement 1 73 days Fri 28/02/14 Fri 23/05/14 
+10.  Fabrication 9 108 days Fri 25/04/14 Thu 28/08/14 
+11.  Packaging 10 4 days Mon 25/08/14 Thu 28/08/14 
+12.  Delivery 11 0 days Thu 28/08/14 Thu 28/08/14 
+   Source: Internal Firm (2014) 
+ 
+Rescheduling with Primavera P6 will show various activities that fit the critical p ath and will discuss with charts marked in red. 
+Activities on the critical path are a large part of agreed activities and tighter supervision because it will have a direct i mpact on 
+project completion. This research has re -planned to find out the impact if  the activities carried out on the critical path on the 
+completion of the project as a whole. The findings of this study indicate that, if the firm has scheduled one activity to be 
+completed in three days, and agreed in Primavera that the activity is not i n accordance with the path of criticism, the firm 
+completes within two days the results will not complete the project. Others answered that the acceleration of completing the 
+project on the critical path would provide conflicting results. 
+Based on CPM analysis in the initial stages of using Primavera P6, figure 2 shows the rescheduling activity with Primavera P6. The 
+next stage needs to be carried out according to the critical path so that the project runs smoothly so that there is no proje ct 
+delay. Therefore, it is very necessary to conduct critical path analysis to determine the critical level so that every activity that 
+must be carried out on the critical path can be done faster and without stretching time. To find out the activities carried o ut on 
+=== PAGE 5 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2232   
+this critical feeding lane, a PERT analysis will be carried out using primavera risk analysis (PRA), which will provide an estimate  of 
+the completion time for each activity and will show the appropriate activities on the critical path that must receive attenti on. 
+ 
+Figure 2. Rescheduling projects with Primavera P6 
+Source: Processed data 
+ 
+Program Evaluation and Review Techniques (PERT) 
+In this section, it will show activity lines that correspond to the critical path to reduce delays. By using Primavera risk a nalysis will 
+be very easy for internal project managers to determine the time to start the project, after contracting with their clients. 
+Primavera risk analysis will give the minimum time estimate, Mean and Mean in the best percentage of time to start a projec t. 
+Primavera risk analysis results will be approved in the graph of the distribution of start date, end date and The duration in  
+Figures  2 and 3. 
+27/02/2014 28/02/2014 28/02/2014
+Distribution (start of interval)
+0
+200
+400
+600
+800
+1000
+Hits
+  0%  28/02/2014
+  5%  28/02/2014
+  10%  28/02/2014
+  15%  28/02/2014
+  20%  28/02/2014
+  25%  28/02/2014
+  30%  28/02/2014
+  35%  28/02/2014
+  40%  28/02/2014
+  45%  28/02/2014
+  50%  28/02/2014
+  55%  28/02/2014
+  60%  28/02/2014
+  65%  28/02/2014
+  70%  28/02/2014
+  75%  28/02/2014
+  80%  28/02/2014
+  85%  28/02/2014
+  90%  28/02/2014
+  95%  28/02/2014
+  100%  28/02/2014
+Cumulative Frequency
+Pressure Vessel Inlet Separator
+Entire Plan : Start Date
+ 
+Figure 3. Distribution graph start date 
+Source: Processed data 
+ 
+In Figure 2, the results of the analysis carried out showed that the most optimal time in starting the project on February 28, 2014 
+with probability 100 per cent, after reviewing the reason that Primavera risk analysis sought to start work on the date speci fied 
+in accordance with the project, displ ays some activities that a waiting time of up to 1 month is required, namely the purchase of 
+materials from abroad. Required, a risk analysis issued by the company to immediately order the material well before the 
+project starts, to reduce the rehearsal co mpleted by the environment that will occur, because the material purchased is heavy 
+equipment and must use sea lanes to make deliveries. After completion, the results of the analysis of the completion will be 
+completed in Figure 2. 
+In figure 3, project com pletion time on 3 occasions, namely maximum, minimum and optimal time. The convenience offered by 
+Primavera risk analysis provides several options for the most optimal settlement team to be carried out, not only at the time  of 
+=== PAGE 6 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2233   
+the entire project but at pro viding optimal time options for each activity. Based on the results of primavera risk analysis, results 
+shows the best time for the project to be completed on 08/10/2014 and the most optimal on 24/09/2014. From the results of 
+this analysis there is a signi ficant difference between automatic scheduling using primavera p6 and the use of primavera risk 
+analysis. Automated scheduling using primavera P6 results in faster project completion estimates than traditional scheduling 
+performed by project management tea ms. However, the results of the scheduling estimates carried out are very far from the 
+completion time of the project in the field, the traditional schedule assumes the project will be completed on 14 August 2014 , 
+however there is a delay in completion unt il 22 September 2014. Based on the results of primavera risk analysis, there is a 
+significant match between the estimated project completion and the actual situation of project completion in the field. Thus,  it 
+is better for companies when scheduling a project to conduct a primavera risk analysis before the project starts.  
+11/09/2014 21/09/2014 01/10/2014
+Distribution (start of interval)
+0
+20
+40
+60
+80
+100
+120
+Hits
+  0%  04/09/2014
+  5%  15/09/2014
+  10%  17/09/2014
+  15%  17/09/2014
+  20%  18/09/2014
+  25%  19/09/2014
+  30%  22/09/2014
+  35%  22/09/2014
+  40%  22/09/2014
+  45%  23/09/2014
+  50%  23/09/2014
+  55%  24/09/2014
+  60%  24/09/2014
+  65%  25/09/2014
+  70%  25/09/2014
+  75%  26/09/2014
+  80%  26/09/2014
+  85%  29/09/2014
+  90%  30/09/2014
+  95%  02/10/2014
+  100%  08/10/2014
+Cumulative Frequency
+Pressure Vessel Inlet Separator
+Entire Plan : Finish Date
+ 
+Figure 4. Distribution graph finish date 
+Source: Processed data 
+ 
+V. CONCLUSION AND RECOMMENDATION 
+CONCLUSIONS  
+Research relating to the oil and gas industry is categorized in the EPC indus try (engineering, procurement, and construction) but 
+is often widely known as a construction project. Project implementation in Oil and gas is a very complex project and has a 
+project management system that emphasizes safety standards, rules, and regulatio ns, which are specified in the contracting 
+environment (PMBOK, 2013). This research contributes theoretically to PMBOK's best practices for the EPC/construction 
+industry, especially those relating to the identification of the phases of the implementation o f oil and gas projects. 
+In identifying the project implementation phase, with the help of Primavera software, this will provide theoretical new insig hts 
+that traditional project management systems cannot support changes in oil and gas projects, especially in the era of the 
+industrial revolution (Polekar & Salgude, 2015). Therefore, new skills and knowledge are needed that must be obtained by the 
+project management team to ensure that the processes they carry out to complete the project are still relevant to  existing 
+technological changes. Changes in technology lead to a reduction in many activities that experience downsizing and require a 
+person who has high creativity and is open to making system changes. In addition, this study also contributes to the lite rature of 
+knowledge management tools, whereby adopting new technologies that are used to better target content to personnel who 
+have a cognitive capability in absorbing new knowledge which is then applied in project implementation (Dalkir, 2005), such a s 
+applying evaluation and scheduling of projects using Primavera. 
+Using project evaluation and scheduling will enable the company to get tacit knowledge transfer (Dalkir, 2005) which is owned  
+by various personnel who have experience in working on and estimati ng the amount of time needed to make the tacit 
+knowledge owned by the company explicit. This research also has a practical contribution that in project management has 
+controls that have close monitoring of resources, costs, quality, and budget. Therefore, the controls carried out can be used to 
+provide feedback as well as revise the project plan and have the ability to divert resources to the right portion. Using a 
+computerized CPM/PERT chart report (Heizer et al., 2017), raw material expenditure, time anal ysis reports, employment status 
+=== PAGE 7 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2234   
+reports, and scheduling will provide practitioners with various facilities, such as; details of costs, labor requirements, co st 
+summaries and hours. In this study, which focuses on project management, especially scheduling a ctivities, it shows important 
+findings that computerized scheduling will simplify work and provide more specific results. More specific results are shown i n 
+the results of the analysis which show that scheduling projects with Primavera will provide clearer  and more systematic project 
+completion targets and provide various kinds of risk analysis that can be considered by the project team in making decisions.  
+The results of re -planning in this study, consistent with previous studies (eg Athani & Kulkarni, 201 8;  Kohli, 2017; Polekar & 
+Salgude, 2015) which emphasize that scheduling using Primavera software will facilitate the task of the project team in 
+scheduling and evaluating activities and make it easier for teams to control the pace of activities that are on the critical path for 
+accelerated activities. 
+Based on the results of CPM analysis using Primavera P6, the estimated project completion results look close to traditional 
+scheduling. However, there is a fundamental difference between automated and tradit ional scheduling. In traditional 
+scheduling, especially with large -scale projects, the management team will find it difficult to determine the critical project size 
+and optimal time due to the large number of activities. Especially in the pressure vessel i nlet separator project, there are 379 
+activities that must be carried out. Due to the large number of activities to be carried out, automatic scheduling using Prim avera 
+P6 will make it easier for the project management team to determine which activities ar e predecessors or successor and which 
+activities can be accelerated by looking at the critical path. Primavera p6 will show activities that are on the critical pat h, then 
+the project management team will find it easier to reschedule activities on the criti cal path, to find the most optimal scheduling. 
+The results of the Primavera P6 analysis in this study show the same time as the target desired by the company will be 
+completed. This is because, in rescheduling using primavera p6 which was carried out in th is study, no rescheduling was carried 
+out based on accelerated critical path activities. For this reason, future research can expand the study by rescheduling base d on 
+the critical path to see advanced completion times. 
+Different from primavera p6 scheduli ng, primavera risk analysis provides more interesting findings. This can be seen in the 
+results of the risk analysis which show a significant similarity between the completion of the project in the field compared to the 
+results of the project estimate. Est imated project completion that is close to project completion in the field, causing the 
+emergence of an interest for the project team to conduct a risk analysis before executing the project. By knowing that projec t 
+completion will not be completed accordin g to the company's initial expectations, the project team can reschedule based on 
+critical path analysis to get the project completion time to match the target. Furthermore, the research findings show that 
+primavera computerized scheduling provides more ef ficient scheduling and provides a variety of conveniences. Therefore the 
+findings of this study support previous research (for example, Gharaibeh, 2014; Kohli, 2017) which emphasizes that in the 
+current industrial revolution it will be very beneficial to u tilize computerized technology to facilitate project implementation. 
+Furthermore, supported by Gharaibeh's (2014) research, emphasizing overall software programs used in project activities will 
+provide solutions that will assist in the completion of projec ts that are faster, lower costs and increase productivity and job 
+accuracy especially in the engineering industry, such as Oil and Gas. For this reason, utilizing computerized based schedulin g will 
+contribute to improving company performance and increasing project success (Locatelli et al., 2017; Rosacker et al., 2010). 
+This study has several limitations to the study, first, this study was designed with applied/qualitative research which empha sizes 
+more on digging information from informants, then reschedul ing the project's ext -pose has not been able to provide strong 
+reasons to specifically prove project delays caused by late activities. Future research seems to be needed to test the aspect s of 
+personal behavior as one of the causes of project completion de lays  (Teasley et al., 2012), by testing the personal side it is 
+expected to provide broader insights for research in the future come. Second, this study only evaluates one project within th e 
+company, so that it has a small scope, so that future research c an explore the mega project so that it has more qualified and 
+relevant theoretical contributions in the changing industrial revolution(Locatelli et al., 2017). Research related to the Oil  and gas 
+industry that promotes occupational health and safety (PMBOK , 2013), therefore future research will be very interesting to 
+examine related safety indicators in the Oil and gas industry project (Toutounchian et al., 2018).  
+ 
+REFERENCES 
+1) Athani, P., & Kulkarni, S. (2018). Planning, Scheduling and Tracking of A Resident ial Bungalow Using Microsoft Project 2013. 
+International Research Journal of Engineering and Technology (IRJET), July, 1362 –1366. 
+2) Belayutham, S., Khairil, C., & Che, I. (2021 ). Production planning , monitoring and review : comparison between the 
+practices in an urban rail transit megaproject with the Last Planner System. The TQM Journal. https://doi.org/10.1108/TQM -
+11-2020-0282 
+=== PAGE 8 ===
+Construction Project Planning and Scheduling: A Case of Inlet Separator Fabrication  
+JEFMS, Volume 4 Issue 11 November 2021                       www.ijefm.co.in                                                              Page 2235   
+3) Berjis, N., Shirouyehzad, H., & Jouzdani, J. (202 0). A new approach to determine the weights of project activities using data 
+envelopment analysis: a case of Mobarakeh steel company. International Journal of Managing Projects in Business, 13(6), 
+1187–1217. https://doi.org/10.1108/IJMPB-12-2019-0304 
+4) Bordley, R. F., Keisler, J. M., & Logan, T. M. (2018). Managing Projects with Uncertain Deadlines. European Journal of 
+Operational Research. https://doi.org/10.1016/j.ejor.2018.09.036  
+5) Dalkir, K. (2005). Knowledge Management in Theory and Practice. Elsevier. htt ps://doi.org/10.1002/asi.21613 
+6) Gharaibeh, H. (2014). Evaluating Project Management Software Packages Using a Scoring Model — A Comparison between 
+MS Project and Primavera. Journal of Software Engineering and Applications, 7, 541 –554. 
+7) Guida, P. L., & Sacco,  G. (2019). Computers & Industrial Engineering A method for project schedule delay analysis. 
+Computers & Industrial Engineering, 128(December 2018), 346–357. https://doi.org/10.1016/j.cie.2018.12.046 
+8) Hartono, B., Sulistyo, S. R., Chai, K. H., & Indarti, N.  (2017). Effective Knowledge Management Strategy and Firm ’ s Size : 
+Evidence from Indonesia Construction Firms. Proceedings of the 2017 IEEE IEEM II., 1, 681 –685. 
+9) Heizer, J., Render, B., & Munson, C. (2017). Operations management: Sustainability and Suppl y Chain Managment (Twelfth). 
+10) Khoso, A. R., Md Yusof, A., Chai, C., & Laghari, M. A. (2021). Robust contractor evaluation criteria classification for moder n 
+technology public construction projects. Journal of Public Procurement, 21(1), 53 –74. https://doi.or g/10.1108/JOPP-06-
+2020-0053 
+11) Kohli, A. R. (2017). Enterprise Project Management using Primavera P6 EPPM. International Research Journal of Engineering 
+and Technology (IRJET), 4(2), 1074–1081. 
+12) Le, P. L., & Nguyen, N. T. D. (2021). Prospect of lean practices towards construction supply chain management trends. 
+International Journal of Lean Six Sigma. https://doi.org/10.1108/IJLSS -06-2020-0071 
+13) Locatelli, G., Mikic, M., Kovacevic, M., Brookes, N., & Ivanisevic, N. (2017). The Successful Delivery of Megaprojects  : A Novel 
+Research Method. 48(5), 78–94. 
+14) PMBOK. (2013). A Guide to the Project Management Body of Knowledge.  
+15) Polekar, U. Y., & Salgude, R. R. (2015). Planning , Scheduling and Tracking of a residential Project using Primavera Software . 
+International Journal of Advance Research in Computer Science and Management Studies, 3(5), 227 –236. 
+16) Rosacker, K. M., Zuckweiler, K. M., & Buelow, J. R. (2010). An empirical evaluation of hospital project implementation 
+success. Academy of Health Care Management Journal VO - 6, 6(1), 37.  
+http://ezproxy.leedsmet.ac.uk/login?url=http://search.ebscohost.com/login.aspx?direct=true&db=edsggo&AN=edsgcl.2631
+57547&site=eds-
+live&scope=site%5Cnhttp://ezproxy.leedsmet.ac.uk/login?url=http://search.ebscohost.com/login.aspx?direct=true&db =eds
+ggo&AN=ed 
+17) Teasley, R., Jordan, M., & Sangtani, V. (2012). the Human Side of Technology Project Performance: Effects of Satisfaction, 
+Perceived Technology Policy, Task Significance and Training. Academy of Information & Management Sciences Journal, 
+15(2), 53–72. http://search.ebscohost.com/login.aspx?direct=true&db=bth&AN=77978998&site=ehost -live 
+18) Toutounchian, S., Abbaspour, M., Dana, T., & Abedi, Z. (2018). Design of a safety cost estimation parametric model in oil and  
+gas engineering, procurement and construction contracts. Safety Science, 106(December 2017), 35–46.  
+https://doi.org/10.1016/j.ssci.2017.12.015 
+19) Türkakın, O. H., Manisalı, E., & Arditi, D. (2020). Delay analysis in construction projects with no updated work schedules. 
+Engineering, Construction and Architectural Management, 27(10), 2893 –2909. https://doi.org/10.1108/ECAM -09-2019-
+0470 
+20) Wang, T., Abdal lah, M., Clevenger, C., & Monghasemi, S. (2021). Time –cost–quality trade -off analysis for planning 
+construction projects. Engineering, Construction and Architectural Management, 28(1), 82 –100.  
+https://doi.org/10.1108/ECAM-12-2017-0271 
+21) Williams, T. (2016).  Identifying Success Factors in Construction Projects: A Case Study. Project Management Journal, 47(1), 
+97–112. https://doi.org/10.1002/pmj 
+ 

@@ -50,10 +50,27 @@ class MatchingService:
 
     @classmethod
     def calculate_temporal_score(
-        cls, event_date: Optional[datetime], planned_start: Optional[datetime], planned_finish: Optional[datetime]
+        cls,
+        event_date: Optional[datetime],
+        planned_start: Optional[datetime],
+        planned_finish: Optional[datetime],
+        status: Optional[str] = None,
+        actual_start: Optional[datetime] = None,
     ) -> float:
-        if not event_date or not planned_start or not planned_finish:
-            return 0.5  # Neutral when no planned dates or event date exist
+        if not event_date:
+            return 0.5
+
+        # If activity is IN_PROGRESS, active execution is ongoing regardless of initial baseline plan dates
+        if status == "IN_PROGRESS" or actual_start is not None:
+            if actual_start and event_date >= actual_start:
+                # Active work occurring on or after actual start is fully temporally compatible
+                return 0.90
+            elif not actual_start:
+                # Started without recorded start timestamp
+                return 0.85
+
+        if not planned_start or not planned_finish:
+            return 0.5  # Neutral when no planned dates exist
 
         # If event falls within planned interval
         if planned_start <= event_date <= planned_finish:
@@ -165,7 +182,11 @@ class MatchingService:
 
         # 4. Temporal Compatibility (S_temp)
         s_temp = cls.calculate_temporal_score(
-            event.execution_date, activity.planned_start, activity.planned_finish
+            event.execution_date,
+            activity.planned_start,
+            activity.planned_finish,
+            status=activity.status,
+            actual_start=activity.actual_start,
         )
 
         # 5. Contextual Alignment (S_context)
@@ -227,13 +248,19 @@ class MatchingService:
 
         activities = query.all()
         # If temporal window filtering produces candidates, prefer them; otherwise fallback to all active
+        # CRITICAL: Always include any activity that is IN_PROGRESS or has an actual_start,
+        # ensuring severely delayed active activities are never excluded by a planned-date window.
         if event.execution_date:
             event_d = event.execution_date
             window_start = event_d - timedelta(days=30)
             window_end = event_d + timedelta(days=30)
             in_window = [
                 a for a in activities
-                if not a.planned_start or not a.planned_finish or (a.planned_start <= window_end and a.planned_finish >= window_start)
+                if a.status == "IN_PROGRESS"
+                or a.actual_start is not None
+                or not a.planned_start
+                or not a.planned_finish
+                or (a.planned_start <= window_end and a.planned_finish >= window_start)
             ]
         else:
             in_window = list(activities)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 import json
 import uuid
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -66,6 +68,38 @@ class Project(Base):
     )
     update_proposals: Mapped[List[UpdateProposal]] = relationship(
         "UpdateProposal", back_populates="project", cascade="all, delete-orphan"
+    )
+    calendars: Mapped[List[ProjectCalendar]] = relationship(
+        "ProjectCalendar", back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class ProjectCalendar(Base):
+    __tablename__ = "calendars"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    calendar_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    calendar_type: Mapped[str] = mapped_column(String(50), default="PROJECT")
+    working_days: Mapped[list] = mapped_column(JSON, default=lambda: [0, 1, 2, 3, 4])
+    hours_per_day: Mapped[float] = mapped_column(Float, default=8.0)
+    holidays: Mapped[list] = mapped_column(JSON, default=list)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    # Relationships
+    project: Mapped[Project] = relationship("Project", back_populates="calendars")
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "calendar_code", name="uq_project_calendar_code"),
     )
 
 
@@ -162,6 +196,8 @@ class Activity(Base):
     )
     constraint_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     constraint_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    activity_codes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now
@@ -430,6 +466,66 @@ class ReviewDecision(Base):
     )
     project: Mapped[Project] = relationship("Project")
     activity: Mapped[Optional[Activity]] = relationship("Activity")
+
+
+class DelayCategory(str, Enum):
+    MATERIAL = "Material"
+    LABOUR = "Labour"
+    EQUIPMENT = "Equipment"
+    WEATHER = "Weather"
+    DESIGN = "Design"
+    PERMIT = "Permit"
+    INSPECTION = "Inspection"
+    ACCESS = "Access"
+    CONTRACTOR = "Contractor"
+    CLIENT = "Client"
+    SAFETY = "Safety"
+    OTHER = "Other"
+    UNKNOWN = "Unknown"
+
+
+class DelayEvent(Base):
+    __tablename__ = "delay_events"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    activity_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("activities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    execution_event_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("execution_events.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="Unknown", index=True
+    )
+    delay_days: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    evidence_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reporting_date: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="IDENTIFIED", index=True
+    )  # IDENTIFIED, CONFIRMED, REJECTED, SIMULATED
+    simulated_impact_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    # Relationships
+    project: Mapped[Project] = relationship("Project")
+    activity: Mapped[Optional[Activity]] = relationship("Activity")
+    execution_event: Mapped[Optional[ExecutionEvent]] = relationship("ExecutionEvent")
 
 
 class ActualProgressLedger(Base):

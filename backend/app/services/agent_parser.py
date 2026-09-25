@@ -794,19 +794,36 @@ USER MESSAGE:
         detected_lang = cls.detect_language(t)
 
         # 1. Intent determination
-        is_query_start = lower.startswith((
-            "what", "who", "when", "how", "show", "is there", "details of",
-            "kya", "kitna", "kitni", "kitne", "kaun", "kahan", "kaisa", "batao", "dikhao", "status of"
-        )) or any(t.startswith(q) for q in ["क्या", "कितना", "बताओ", "दिखाओ"])
+        query_prefixes = (
+            "what", "who", "when", "where", "why", "how", "show", "list", "give", "display",
+            "get", "find", "search", "tell", "which", "is there", "are there", "do we have",
+            "does the", "details of", "summary of", "can you", "could you", "please show",
+            "please list", "please give", "please tell", "status of", "progress of", "information on",
+            "kya", "kitna", "kitni", "kitne", "kaun", "kaunse", "kaunsi", "kahan", "kaisa", "kaise",
+            "batao", "bataiye", "dikhao", "dikhaye", "suchi", "list do", "status kya", "kya hai"
+        )
+        is_query_start = lower.startswith(query_prefixes) or any(t.startswith(q) for q in ["क्या", "कितना", "कितनी", "कितने", "कौन", "बताओ", "बताइए", "दिखाओ", "दिखाइए", "सूची"])
 
-        is_query_phrase = any(
-            f" {q} " in f" {lower} " or lower.endswith(q) or lower.startswith(q)
-            for q in [
-                "kya hai", "kitna hai", "kaisa hai", "status kya", "progress kya", "productivity kya",
-                "productivity kya thi", "average productivity", "what was", "what were", "what is",
-                "how long", "how much", "tell me", "can you tell", "show me", "hai kya", "batao", "dikhao"
-            ]
-        ) or any(q in t for q in ["क्या है", "कितना है", "बताओ", "दिखाओ", "स्थिति क्या"])
+        is_query_phrase = (
+            any(
+                f" {q} " in f" {lower} " or lower.endswith(q) or lower.startswith(q)
+                for q in [
+                    "kya hai", "kitna hai", "kitne hain", "kitni hai", "kaisa hai", "status kya", "progress kya",
+                    "productivity kya", "productivity kya thi", "average productivity", "what was", "what were",
+                    "what is", "what are", "when is", "when will", "how long", "how much", "how many", "tell me",
+                    "can you tell", "show me", "give me", "list all", "show all", "hai kya", "hain kya", "batao",
+                    "dikhao", "which ones", "which of these", "which are", "which is", "what comes after",
+                    "what depends on", "comes after", "comes before", "longest duration", "shortest duration",
+                    "zero float", "critical path", "who is", "due today", "due tomorrow", "this week", "next week",
+                    "this month", "what is completed", "what are completed", "which are completed"
+                ]
+            )
+            or any(q in t for q in ["क्या है", "कितना है", "कितनी है", "कितने हैं", "बताओ", "बताइए", "दिखाओ", "दिखाइए", "स्थिति क्या", "कौन सा", "कौन से"])
+            or (lower.endswith("?") and not re.search(r"\b(?:update|set|mark|badal|karo|change)\b", lower))
+        )
+        if re.search(r"\b(?:can you update|could you update|please update|update them|update karo|update kardo|update it)\b", lower):
+            is_query_phrase = False
+            is_query_start = False
 
         # 1. Completion & Work verb detection across languages
         is_completed = (
@@ -844,10 +861,10 @@ USER MESSAGE:
             )
         ):
             intent = "PROGRESS_UPDATE_REQUEST"
-        elif is_completed:
-            intent = "PROGRESS_REPORT"
         elif is_query_start or is_query_phrase:
             intent = "INFORMATION_QUERY"
+        elif is_completed:
+            intent = "PROGRESS_REPORT"
         elif any(verb in lower for verb in work_verbs) or has_devanagari_work:
             intent = "PROGRESS_REPORT"
         else:
@@ -1059,7 +1076,7 @@ USER MESSAGE:
         if is_direct_bulk_clarification:
             intent = "CLARIFICATION_RESPONSE"
             is_bulk = True
-        elif (has_bulk_keyword or len(extracted_discs) > 1) and (has_scope_indicator or len(extracted_discs) > 0) and not reported_code:
+        elif not (is_query_start or is_query_phrase) and (has_bulk_keyword or len(extracted_discs) > 1) and (has_scope_indicator or len(extracted_discs) > 0) and not reported_code:
             intent = "BULK_PROGRESS_REPORT"
             is_bulk = True
             if is_completed:
@@ -1244,7 +1261,7 @@ USER MESSAGE:
             any(w in text.lower() for w in cls.COMPLETION_VERBS_LATIN)
             or any(w in text for w in cls.COMPLETION_VERBS_INDIC)
         )
-        if is_comp:
+        if is_comp and parsed.intent != "INFORMATION_QUERY":
             parsed.status_reported = "COMPLETED"
             discs = cls.extract_multilingual_disciplines(text)
             if parsed.reported_activity_code:
@@ -1252,8 +1269,6 @@ USER MESSAGE:
                     parsed.override_percent = 100.0
                     if "override_percent" not in parsed.entities_present:
                         parsed.entities_present.append("override_percent")
-                if parsed.intent == "INFORMATION_QUERY":
-                    parsed.intent = "PROGRESS_UPDATE_REQUEST"
             elif len(discs) > 1 or parsed.is_bulk:
                 parsed.intent = "BULK_PROGRESS_REPORT"
                 parsed.is_bulk = True
@@ -1270,10 +1285,11 @@ USER MESSAGE:
                 if not parsed.bulk_scope:
                     parsed.bulk_scope = {"discipline": discs[0], "disciplines": discs, "raw_text": text}
             else:
-                if parsed.intent == "INFORMATION_QUERY":
-                    parsed.intent = "PROGRESS_REPORT"
+                parsed.intent = "PROGRESS_REPORT"
                 if parsed.override_percent is None:
                     parsed.override_percent = 100.0
+        elif is_comp and parsed.intent == "INFORMATION_QUERY":
+            parsed.status_reported = "COMPLETED"
 
         # 3. Guarantee discipline extraction from multilingual tokens if missing
         if not parsed.discipline:

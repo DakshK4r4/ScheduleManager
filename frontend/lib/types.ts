@@ -559,3 +559,26 @@ export interface CPMResult {
   error?: string | null;
 }
 
+export interface ScheduleHealthMetric {
+  status: "PASS" | "WARNING" | "FAIL";
+  [key: string]: any;
+}
+
+export interface ScheduleHealthResult {
+  project_id: string;
+  project_code: string;
+  project_name: string;
+  health_score: number;
+  grade: string;
+  total_activities: number;
+  total_relationships: number;
+  critical_activities_count: number;
+  critical_path_length_days: number;
+  has_continuous_critical_path: boolean;
+  disconnected_components_count: number;
+  deductions: Record<string, number>;
+  metrics: Record<string, ScheduleHealthMetric>;
+  recommendations: string[];
+}
+
+

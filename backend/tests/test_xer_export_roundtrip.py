@@ -49,6 +49,7 @@ def test_xer_export_preserves_wbs_hierarchy_dates_and_relationships(
         actual_start=datetime(2024, 9, 30, 0, 0),
         original_duration=58.0,
         percent_complete=75.0,
+        notes="Foundation inspection pending approval",
     )
     act2 = Activity(
         id="act-str-1001",
@@ -106,7 +107,14 @@ def test_xer_export_preserves_wbs_hierarchy_dates_and_relationships(
 
     # Verify tables present
     assert "PROJECT" in tables
+    assert "PROJWBS" in tables
     assert "TASK" in tables
+    assert "TASKPRED" in tables
+
+    # Verify PROJWBS
+    wbs_rows = {r["wbs_short_name"]: r for r in tables["PROJWBS"]["rows"]}
+    assert "WBS-100" in wbs_rows
+    assert "WBS-101" in wbs_rows
 
     # Verify TASK
     task_rows = {r["task_code"]: r for r in tables["TASK"]["rows"]}
@@ -115,10 +123,46 @@ def test_xer_export_preserves_wbs_hierarchy_dates_and_relationships(
 
     t1 = task_rows["CIV-1001"]
     assert t1["status_code"] == "TK_Active"
-    assert t1["phys_complete_pct"] == "75.00"
+    pct_field = t1.get("phys_percent_comp") or t1.get("phys_complete_pct")
+    assert pct_field == "75.00"
     assert t1["act_start_date"] == "2024-09-30 00:00"
 
     t2 = task_rows["STR-1001"]
     assert t2["status_code"] == "TK_NotStart"
-    assert t2["phys_complete_pct"] == "0.00"
+    pct_field_2 = t2.get("phys_percent_comp") or t2.get("phys_complete_pct")
+    assert pct_field_2 == "0.00"
     assert t2["act_start_date"] == ""
+
+    # Verify TASKPRED
+    pred_rows = tables["TASKPRED"]["rows"]
+    assert len(pred_rows) == 1
+    rel_row = pred_rows[0]
+    assert rel_row["pred_type"] == "PR_FS"
+    assert rel_row["lag_hr_cnt"] == "16"  # 2 days * 8 hrs
+
+    # Verify TASKMEMO
+    assert "MEMOTYPE" in tables
+    assert "TASKMEMO" in tables
+    memo_rows = tables["TASKMEMO"]["rows"]
+    assert len(memo_rows) == 1
+    assert "Foundation inspection pending approval" in memo_rows[0]["task_memo"]
+
+    # 6. Verify round-trip parsing using XerParser
+    import sys
+    from pathlib import Path
+    doc_parser_path = Path(__file__).resolve().parents[2] / "document-parser"
+    if str(doc_parser_path) not in sys.path:
+        sys.path.insert(0, str(doc_parser_path))
+
+    from app.parsers.xer_parser import XerParser
+    parser = XerParser()
+    reparsed = parser.parse(res.content, "roundtrip.xer")
+    assert reparsed.project.project_code == "TEST_XER_ROUNDTRIP"
+    assert len(reparsed.wbs) == 2
+    assert len(reparsed.activities) == 2
+    assert len(reparsed.relationships) == 1
+    assert reparsed.relationships[0].predecessor_code == "CIV-1001"
+    assert reparsed.relationships[0].successor_code == "STR-1001"
+    assert reparsed.relationships[0].lag == 2.0
+    civ_act = next(a for a in reparsed.activities if a.activity_code == "CIV-1001")
+    assert civ_act.notes == "Foundation inspection pending approval"

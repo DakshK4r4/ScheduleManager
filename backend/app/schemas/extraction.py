@@ -35,12 +35,12 @@ class ExecutionEventDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     event_id: str
-    artifact_id: str
-    source_report_id: str
-    source_document_name: str
-    storage_key: str
-    file_sha256: str
-    page_number: int = 1
+    artifact_id: Optional[str] = None
+    source_report_id: Optional[str] = None
+    source_document_name: Optional[str] = None
+    storage_key: Optional[str] = None
+    file_sha256: Optional[str] = None
+    page_number: Optional[int] = 1
     bounding_box: Optional[List[float]] = None
     verbatim_excerpt: str
     activity_reference: Optional[str] = None

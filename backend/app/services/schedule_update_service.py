@@ -51,6 +51,12 @@ class ScheduleUpdateService:
         if not activity:
             raise ValueError(f"Activity {target_act_id} not found.")
 
+        if activity.project_id != event.project_id:
+            raise ValueError(
+                f"Security violation: Target activity {target_act_id} (project {activity.project_id}) "
+                f"does not belong to event {event_id} (project {event.project_id})."
+            )
+
         # Check idempotency: Has this event already been applied to this activity?
         existing_ledger = (
             db.query(ActualProgressLedger)

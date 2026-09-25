@@ -316,7 +316,9 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
         for r in relationships
     ]
 
-    engine = CPMEngine()
+    from app.services.calendar_service import CalendarService
+    cal_map = CalendarService.load_project_calendars(db, project_id)
+    engine = CPMEngine(calendars=cal_map)
     result = engine.calculate(
         activities=act_dicts,
         relationships=rel_dicts,
