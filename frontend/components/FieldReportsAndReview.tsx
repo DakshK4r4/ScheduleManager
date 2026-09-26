@@ -682,9 +682,28 @@ export default function FieldReportsAndReview({
                       {art.sha256}
                     </td>
                     <td className="px-3 py-2">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700 font-semibold uppercase">
-                        {art.extraction_status}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                            art.extraction_status === "EXTRACTED"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : art.extraction_status === "NEEDS_REVIEW"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : art.extraction_status === "FAILED"
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : art.extraction_status === "PROCESSING"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200 animate-pulse"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                          }`}
+                        >
+                          {art.extraction_status}
+                        </span>
+                        {art.error_message && (
+                          <span className="text-[10px] text-slate-500 max-w-xs truncate" title={art.error_message}>
+                            {art.error_message}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-slate-500">
                       {art.uploaded_at ? new Date(art.uploaded_at).toLocaleDateString() : "-"}
@@ -692,9 +711,14 @@ export default function FieldReportsAndReview({
                     <td className="px-3 py-2 text-right font-sans">
                       <button
                         onClick={() => handleRunExtraction(art.artifact_id, true)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                        className={`text-xs font-semibold ${
+                          art.extraction_status === "FAILED" || art.extraction_status === "NEEDS_REVIEW"
+                            ? "text-amber-600 hover:text-amber-800"
+                            : "text-blue-600 hover:text-blue-800"
+                        }`}
+                        title="Re-run extraction engine on stored artifact"
                       >
-                        Re-extract
+                        {art.extraction_status === "FAILED" || art.extraction_status === "NEEDS_REVIEW" ? "Retry" : "Re-extract"}
                       </button>
                     </td>
                   </tr>

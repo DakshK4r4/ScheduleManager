@@ -197,12 +197,58 @@ def test_voice_memo_storage_and_metadata(client: TestClient, db_session: Session
     art_json = res.json()["artifact"]
     assert art_json["artifact_type"] == "VOICE_MEMO"
 
-    # Extracting voice memo preserves evidence and emits an audio execution event
+    # Extracting voice memo preserves evidence and sets NEEDS_REVIEW without fabricating fake events
     ext_res = client.post(f"/api/v1/artifacts/{art_json['artifact_id']}/extract")
     assert ext_res.status_code == 200
+    assert ext_res.json()["status"] == "NEEDS_REVIEW"
+    events = ext_res.json()["events"]
+    assert len(events) == 0  # CRITICAL: Never fabricate a fake ExecutionEvent when STT fails or produces no audio
+
+def test_voice_memo_stt_success_flow(client: TestClient, db_session: Session, monkeypatch):
+    proj, _, _ = create_test_project_and_activities(db_session)
+    dummy_audio_bytes = b"ID3\x03\x00\x00\x00\x00\x00#AUDIO_BYTES_TEST"
+    files = {"file": ("foreman_shift_update.m4a", dummy_audio_bytes, "audio/mp4")}
+
+    res = client.post(f"/api/v1/projects/{proj.id}/artifacts/upload", files=files)
+    art_json = res.json()["artifact"]
+
+    # Mock Sarvam STT returning a valid transcription
+    from app.services.sarvam_service import SarvamService
+    monkeypatch.setattr(
+        SarvamService,
+        "transcribe_audio",
+        classmethod(lambda cls, *args, **kwargs: {
+            "transcript": "Today we completed 140 m3 concrete pour for Pier 14 cap beam.",
+            "detected_language_code": "en-IN",
+        })
+    )
+    # Mock LLM extraction returning structured event from transcript
+    monkeypatch.setattr(
+        ExtractionService,
+        "extract_with_llm",
+        classmethod(lambda cls, text, *args, **kwargs: [{
+            "verbatim_excerpt": "completed 140 m3 concrete pour for Pier 14 cap beam",
+            "activity_reference": "Pier 14 Cap Beam",
+            "reported_activity_code": "CIV-2040",
+            "description": "Concrete pour for Pier 14 cap beam",
+            "execution_date": "2026-09-15",
+            "quantity": 140.0,
+            "unit": "m3",
+            "location": "Pier 14",
+            "discipline": "Civil / Structural",
+            "status_reported": "COMPLETED",
+            "page_number": 1,
+            "extraction_confidence": 0.95,
+        }])
+    )
+
+    ext_res = client.post(f"/api/v1/artifacts/{art_json['artifact_id']}/extract")
+    assert ext_res.status_code == 200
+    assert ext_res.json()["status"] == "EXTRACTED"
     events = ext_res.json()["events"]
     assert len(events) == 1
-    assert "Audio Voice Recording" in events[0]["verbatim_excerpt"]
+    assert events[0]["quantity"] == 140.0
+    assert events[0]["reported_activity_code"] == "CIV-2040"
 
 def test_extraction_idempotency_prevents_duplicate_events(client: TestClient, db_session: Session):
     proj, _, _ = create_test_project_and_activities(db_session)

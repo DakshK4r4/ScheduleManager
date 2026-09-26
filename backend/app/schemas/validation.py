@@ -9,6 +9,7 @@ class ValidationErrorDetail(BaseModel):
     message: str
     code: Optional[str] = None
     value: Optional[Any] = None
+    severity: str = "ERROR"  # "ERROR" or "WARNING"
 
 
 class ValidationResponse(BaseModel):

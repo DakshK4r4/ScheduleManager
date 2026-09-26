@@ -104,6 +104,10 @@ class ActionCardDTO(BaseModel):
     scope_label: Optional[str] = None
     proposed_status: Optional[str] = None
     target_percent: Optional[float] = None
+    multi_proposals: Optional[List[Dict[str, Any]]] = None
+    is_multi_activity: Optional[bool] = False
+    resolution_session_id: Optional[str] = None
+    is_resolution_question: Optional[bool] = False
 
 
 class MessageResponseDTO(BaseModel):
@@ -166,10 +170,26 @@ class BulkProposalConfirmResponse(BaseModel):
     message: str
 
 
+class ActivityUpdateCandidate(BaseModel):
+    activity_reference: str
+    reported_percent: Optional[float] = None
+    reported_quantity: Optional[float] = None
+    unit: Optional[str] = None
+    status_reported: Optional[str] = None
+    confidence: float = 1.0
+    raw_clause: Optional[str] = None
+    resolved_activity_id: Optional[str] = None
+    resolved_activity_code: Optional[str] = None
+    resolved_activity_name: Optional[str] = None
+    resolution_method: Optional[str] = None
+    previous_percent: Optional[float] = None
+
+
 class ParsedConversationalIntent(BaseModel):
     intent: str  # "INFORMATION_QUERY", "PROGRESS_REPORT", "PROGRESS_UPDATE_REQUEST", "CLARIFICATION_RESPONSE", "ARTIFACT_SUBMISSION", "BULK_PROGRESS_REPORT"
     confidence: float = 0.95
     is_bulk: bool = False
+    is_explicit_bulk: bool = False
     bulk_scope: Optional[Dict[str, Any]] = None
     entities_present: List[str] = []
     quantity: Optional[float] = None
@@ -186,6 +206,7 @@ class ParsedConversationalIntent(BaseModel):
     override_percent: Optional[float] = None
     description: Optional[str] = None
     detected_language: Optional[str] = "en"  # "en", "hi", "hinglish"
+    activity_updates: List[ActivityUpdateCandidate] = Field(default_factory=list)
 
 
 class TTSRequest(BaseModel):

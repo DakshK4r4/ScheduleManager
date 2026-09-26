@@ -30,7 +30,7 @@ P6_CONSTRAINT_MAP = {
 
 
 class XerParser(BaseParser):
-    def parse(self, content: bytes, filename: str) -> CanonicalSchedule:
+    def parse(self, content: bytes, filename: str, target_project_code: Optional[str] = None) -> CanonicalSchedule:
         try:
             text = content.decode("utf-8", errors="replace")
         except Exception as e:
@@ -73,11 +73,34 @@ class XerParser(BaseParser):
             elif tag == "%E":
                 break
 
-        # 1. Parse Project
+        # 0. Parse Calendars (hours per day)
+        calendar_rows = tables.get("CALENDAR", [])
+        clndr_id_to_hours_per_day: Dict[str, float] = {}
+        clndr_id_to_name: Dict[str, str] = {}
+        for c_row in calendar_rows:
+            cid = c_row.get("clndr_id", "").strip()
+            cname = c_row.get("clndr_name", "").strip()
+            day_hr = self.parse_float(c_row.get("day_hr_cnt"))
+            if cid:
+                if cname:
+                    clndr_id_to_name[cid] = cname
+                if day_hr and day_hr > 0.0:
+                    clndr_id_to_hours_per_day[cid] = day_hr
+
+        # 1. Parse Project (scoped by target_project_code if provided, else first project)
         project_rows = tables.get("PROJECT", [])
         target_proj_id = ""
+        p_row = None
+
         if project_rows:
-            p_row = project_rows[0]
+            if target_project_code:
+                for r in project_rows:
+                    if r.get("proj_short_name", "").strip() == target_project_code.strip():
+                        p_row = r
+                        break
+            if not p_row:
+                p_row = project_rows[0]
+
             target_proj_id = p_row.get("proj_id", "").strip()
             proj_code = p_row.get("proj_short_name") or filename.rsplit(".", 1)[0]
             proj_name = p_row.get("proj_short_name") or p_row.get("project_name") or proj_code
@@ -97,13 +120,20 @@ class XerParser(BaseParser):
             data_date=data_date,
         )
 
-        # 2. Parse WBS
+        # 2. Parse WBS (strictly scoped to target_proj_id)
         wbs_rows = tables.get("PROJWBS", [])
+        scoped_wbs_rows = []
+        for row in wbs_rows:
+            row_proj_id = row.get("proj_id", "").strip()
+            if target_proj_id and row_proj_id and row_proj_id != target_proj_id:
+                continue
+            scoped_wbs_rows.append(row)
+
         wbs_id_to_code: Dict[str, str] = {}
         wbs_id_to_parent_id: Dict[str, Optional[str]] = {}
         canonical_wbs_list: List[CanonicalWBSNode] = []
 
-        for row in wbs_rows:
+        for row in scoped_wbs_rows:
             wbs_id = row.get("wbs_id", "").strip()
             if not wbs_id:
                 continue
@@ -114,8 +144,8 @@ class XerParser(BaseParser):
             parent_id = row.get("parent_wbs_id", "").strip() or None
             wbs_id_to_parent_id[wbs_id] = parent_id
 
-        # Resolve parent_code for WBS nodes
-        for row in wbs_rows:
+        # Resolve parent_code for scoped WBS nodes
+        for row in scoped_wbs_rows:
             wbs_id = row.get("wbs_id", "").strip()
             if not wbs_id:
                 continue
@@ -147,21 +177,20 @@ class XerParser(BaseParser):
         for r in actv_code_rows:
             cid = r.get("actv_code_id", "").strip()
             tid = r.get("actv_code_type_id", "").strip()
-            cname = r.get("actv_code_name", "").strip() or r.get("short_name", "").strip()
-            tname = actv_type_id_to_name.get(tid, "Code")
-            if cid and cname:
-                actv_code_id_to_val[cid] = (tname, cname)
+            val = r.get("actv_code_name", "").strip() or r.get("short_name", "").strip()
+            type_name = actv_type_id_to_name.get(tid, "General")
+            if cid and val:
+                actv_code_id_to_val[cid] = (type_name, val)
 
-        task_actv_rows = tables.get("TASKACTV", [])
         task_id_to_codes: Dict[str, Dict[str, str]] = defaultdict(dict)
-        for r in task_actv_rows:
-            tid = r.get("task_id", "").strip()
-            cid = r.get("actv_code_id", "").strip()
-            if tid and cid in actv_code_id_to_val:
-                tname, cval = actv_code_id_to_val[cid]
-                task_id_to_codes[tid][tname] = cval
+        for r in tables.get("TASKACTV", []):
+            task_id = r.get("task_id", "").strip()
+            code_id = r.get("actv_code_id", "").strip()
+            if task_id and code_id in actv_code_id_to_val:
+                t_name, val = actv_code_id_to_val[code_id]
+                task_id_to_codes[task_id][t_name] = val
 
-        # Collect TASKMEMO
+        # 2c. Parse Task Memos / Notes
         task_id_to_memos: Dict[str, List[str]] = defaultdict(list)
         for memo_row in tables.get("TASKMEMO", []):
             t_id = memo_row.get("task_id", "").strip()
@@ -169,13 +198,12 @@ class XerParser(BaseParser):
             if t_id and memo_txt:
                 task_id_to_memos[t_id].append(memo_txt)
 
-        # 3. Parse Activities
+        # 3. Parse Activities (scoped by target_proj_id)
         task_rows = tables.get("TASK", [])
         task_id_to_code: Dict[str, str] = {}
         canonical_activities: List[CanonicalActivity] = []
 
         for row in task_rows:
-            # Filter by project ID if multiple projects exist in XER export
             row_proj_id = row.get("proj_id", "").strip()
             if target_proj_id and row_proj_id and row_proj_id != target_proj_id:
                 continue
@@ -207,11 +235,15 @@ class XerParser(BaseParser):
             act_start = self.parse_datetime(row.get("act_start_date"))
             act_finish = self.parse_datetime(row.get("act_end_date"))
 
-            # Duration: P6 stores hours (standard 8hr/day)
+            # Duration: P6 stores hours. Convert using calendar hours-per-day
+            cal_id = row.get("clndr_id", "").strip()
+            hours_per_day = clndr_id_to_hours_per_day.get(cal_id, 8.0)
+            cal_display = clndr_id_to_name.get(cal_id) or cal_id or None
+
             target_hr = self.parse_float(row.get("target_drtn_hr_cnt"))
             remain_hr = self.parse_float(row.get("remain_drtn_hr_cnt"))
-            orig_dur = round(target_hr / 8.0, 2) if target_hr is not None else None
-            rem_dur = round(remain_hr / 8.0, 2) if remain_hr is not None else orig_dur
+            orig_dur = round(target_hr / hours_per_day, 2) if target_hr is not None else None
+            rem_dur = round(remain_hr / hours_per_day, 2) if remain_hr is not None else orig_dur
 
             # Constraints
             raw_cstr_type = row.get("cstr_type", "").strip()
@@ -235,7 +267,7 @@ class XerParser(BaseParser):
                     original_duration=orig_dur,
                     remaining_duration=rem_dur,
                     percent_complete=pct,
-                    calendar=row.get("clndr_id"),
+                    calendar=cal_display,
                     constraint_type=cstr_type,
                     constraint_date=cstr_date,
                     activity_codes=act_codes,
@@ -243,7 +275,7 @@ class XerParser(BaseParser):
                 )
             )
 
-        # 4. Parse Relationships
+        # 4. Parse Relationships (strictly scoped to target_proj_id activities)
         pred_rows = tables.get("TASKPRED", [])
         canonical_relationships: List[CanonicalRelationship] = []
 
@@ -259,21 +291,29 @@ class XerParser(BaseParser):
         }
 
         for row in pred_rows:
+            row_proj_id = row.get("proj_id", "").strip()
+            if target_proj_id and row_proj_id and row_proj_id != target_proj_id:
+                continue
+
             task_id = row.get("task_id", "").strip()
             pred_id = row.get("pred_task_id", "").strip()
 
             # P6 TASKPRED: task_id is the SUCCESSOR, pred_task_id is the PREDECESSOR
-            succ_code = task_id_to_code.get(task_id) or task_id
-            pred_code = task_id_to_code.get(pred_id) or pred_id
+            succ_code = task_id_to_code.get(task_id)
+            pred_code = task_id_to_code.get(pred_id)
 
+            # Both activities must belong to the imported project
+            # External relationships to other projects must not be emitted as broken internal relationships
             if not succ_code or not pred_code:
                 continue
 
             raw_rel = row.get("pred_type", "PR_FS").strip()
             rel_type = type_map.get(raw_rel, RelationshipType.FS)
 
+            cal_id = row.get("clndr_id", "").strip()
+            hours_per_day = clndr_id_to_hours_per_day.get(cal_id, 8.0)
             lag_hr = self.parse_float(row.get("lag_hr_cnt"), default=0.0)
-            lag_days = round((lag_hr or 0.0) / 8.0, 2)
+            lag_days = round((lag_hr or 0.0) / hours_per_day, 2)
 
             canonical_relationships.append(
                 CanonicalRelationship(

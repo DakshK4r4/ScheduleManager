@@ -35,6 +35,13 @@ from app.schemas.agent import (
     PendingActionDTO,
     ProposalConfirmResponse,
 )
+from app.services.activity_reference_resolver import ActivityReferenceResolver
+from app.services.interactive_activity_resolver import (
+    ActivityResolutionSession,
+    InteractiveActivityResolver,
+    ResolutionSessionStatus,
+    ResolutionStepResult,
+)
 from app.services.agent_conversation_service import AgentConversationService, format_utc_iso as _format_utc_iso
 from app.services.agent_parser import ConversationalParser
 from app.services.cpm_engine import CPMEngine, CPMResult
@@ -710,6 +717,206 @@ class TimeAgentService:
             # If not confirm/cancel, allow INFORMATION_QUERY to be answered; other intents are blocked after parsing below.
             pass
 
+        # Case 1c: Active ActivityResolutionSession processing (Interactive Activity Disambiguation)
+        if not pending_bulk_meta and not pending_single_prop and conv.active_event_id:
+            active_res_ev = (
+                db.query(ExecutionEvent)
+                .filter(
+                    ExecutionEvent.id == conv.active_event_id,
+                    ExecutionEvent.project_id == project_id,
+                )
+                .first()
+            )
+            if active_res_ev:
+                ev_ctx = cls._get_or_init_update_context(active_res_ev)
+                sess_data = ev_ctx.get("resolution_session")
+                if sess_data and sess_data.get("status") == ResolutionSessionStatus.ACTIVE.value:
+                    session = ActivityResolutionSession.from_dict(sess_data)
+                    all_acts = db.query(Activity).filter(Activity.project_id == project.id).all()
+
+                    step_result = InteractiveActivityResolver.process_answer(
+                        session=session,
+                        user_answer=user_content,
+                        catalog=all_acts,
+                        resp_lang=resp_lang,
+                    )
+                    ev_ctx["resolution_session"] = session.to_dict()
+
+                    if step_result.status == ResolutionSessionStatus.RESOLVED:
+                        resolved_act = step_result.resolved_activity
+                        conv.active_activity_id = resolved_act.id
+                        ev_ctx["activity_id"] = resolved_act.id
+                        ev_ctx["activity_code"] = resolved_act.activity_code
+                        ev_ctx["activity_name"] = resolved_act.name
+                        ev_ctx["status"] = "ACTIVITY_IDENTIFIED"
+
+                        if session.partially_resolved_updates:
+                            pct = session.extracted_clues.get("reported_percent")
+                            if pct is None:
+                                pct = 100.0 if session.extracted_clues.get("status_reported") == "COMPLETED" else (resolved_act.percent_complete or 0.0)
+                            all_resolved_items = list(session.partially_resolved_updates)
+                            all_resolved_items.append({
+                                "activity_id": resolved_act.id,
+                                "activity_code": resolved_act.activity_code,
+                                "activity_name": resolved_act.name,
+                                "current_percent": resolved_act.percent_complete or 0.0,
+                                "proposed_percent": pct,
+                                "status_reported": session.extracted_clues.get("status_reported") or ("COMPLETED" if pct == 100.0 else "IN_PROGRESS"),
+                            })
+
+                            confirm_label = (
+                                "सभी अपडेट की पुष्टि करें" if resp_lang == "hi"
+                                else ("Sabhi updates confirm karein" if resp_lang == "hinglish"
+                                else "Confirm All Updates")
+                            )
+                            cancel_label = "रद्द करें" if resp_lang == "hi" else "Cancel"
+
+                            card = ActionCardDTO(
+                                type="BULK_SCOPE_PROPOSAL",
+                                proposal_status="PENDING",
+                                is_multi_activity=True,
+                                bulk_activities=all_resolved_items,
+                                bulk_count=len(all_resolved_items),
+                                scope_label="Multi-Activity Progress Updates",
+                                confirm_label=confirm_label,
+                                reject_label=cancel_label,
+                                options=[
+                                    {
+                                        "label": confirm_label,
+                                        "value": "CONFIRM_ALL_BULK",
+                                    },
+                                    *[
+                                        {
+                                            "label": f"{item['activity_code']}: {item['proposed_percent']}%",
+                                            "value": item['activity_code'],
+                                        }
+                                        for item in all_resolved_items
+                                    ],
+                                    {
+                                        "label": cancel_label,
+                                        "value": "CANCEL",
+                                    },
+                                ],
+                            )
+                            cls._save_update_context(active_res_ev, ev_ctx)
+                            conv.status = "WAITING_FOR_BULK_UPDATE_CONFIRMATION"
+                            db.commit()
+
+                            summary_items = [f"{i['activity_code']} -> {i['proposed_percent']}%" for i in all_resolved_items]
+                            if resp_lang == "hi":
+                                reply_text = f"सभी गतिविधियां हल हो गईं: {', '.join(summary_items)}। कृपया शेड्यूल में लागू करने से पहले पुष्टि करें।"
+                            elif resp_lang == "hinglish":
+                                reply_text = f"Sabhi activities resolve ho gayi hain: {', '.join(summary_items)}. Please schedule mein apply karne se pehle confirm karein."
+                            else:
+                                reply_text = f"All activities identified: {', '.join(summary_items)}. Please confirm before applying to the schedule."
+
+                            return cls._save_and_return_agent_response(
+                                db=db,
+                                conv=conv,
+                                reply_text=reply_text,
+                                action_card=card,
+                            )
+                        else:
+                            prev_pct = resolved_act.percent_complete or 0.0
+                            pct = session.extracted_clues.get("reported_percent")
+                            if pct is not None:
+                                proposed_pct = pct
+                            elif session.extracted_clues.get("reported_quantity") is not None and resolved_act.planned_quantity and resolved_act.planned_quantity > 0:
+                                qty_ratio = (float(session.extracted_clues["reported_quantity"]) / float(resolved_act.planned_quantity)) * 100.0
+                                proposed_pct = min(100.0, prev_pct + qty_ratio)
+                            elif session.extracted_clues.get("status_reported") == "COMPLETED":
+                                proposed_pct = 100.0
+                            else:
+                                proposed_pct = prev_pct
+
+                            proposed_pct = round(proposed_pct, 2)
+                            ev_ctx["override_percent"] = proposed_pct
+                            ev_ctx["status"] = "PROPOSAL_PENDING"
+                            cls._save_update_context(active_res_ev, ev_ctx)
+                            db.flush()
+
+                            proposal = cls.stage_proposal(
+                                db=db,
+                                conversation=conv,
+                                event=active_res_ev,
+                                activity=resolved_act,
+                                proposed_percent=proposed_pct,
+                                proposed_status=resolved_act.status,
+                                quantity_semantics="INCREMENTAL",
+                                incremental_quantity=session.extracted_clues.get("reported_quantity"),
+                                override_percent=proposed_pct,
+                            )
+
+                            card = ActionCardDTO(
+                                type="PROPOSAL_CONFIRMATION",
+                                proposal_id=proposal.id,
+                                event_id=active_res_ev.id,
+                                activity_id=resolved_act.id,
+                                activity_code=resolved_act.activity_code,
+                                activity_name=resolved_act.name,
+                                current_percent=prev_pct,
+                                proposed_percent=proposed_pct,
+                                incremental_quantity=session.extracted_clues.get("reported_quantity"),
+                                unit=session.extracted_clues.get("unit"),
+                                execution_date=active_res_ev.execution_date.strftime("%Y-%m-%d") if active_res_ev.execution_date else None,
+                            )
+                            if resp_lang == "hi":
+                                reply_text = (
+                                    f"मुझे {resolved_act.activity_code} ({resolved_act.name}) मिल गई है। "
+                                    f"प्रस्तावित प्रगति अपडेट {proposed_pct}% है। कृपया लागू करने से पहले पुष्टि करें।"
+                                )
+                                card.confirm_label = "अपडेट की पुष्टि करें"
+                                card.reject_label = "रद्द करें"
+                                card.review_label = "समीक्षा करें"
+                            elif resp_lang == "hinglish":
+                                reply_text = (
+                                    f"Mujhe {resolved_act.activity_code} ({resolved_act.name}) mil gayi hai. "
+                                    f"Proposed progress update {proposed_pct}% hai. Please apply karne se pehle confirm karein."
+                                )
+                                card.confirm_label = "Update Confirm Karein"
+                                card.reject_label = "Reject Karein"
+                                card.review_label = "Details Review Karein"
+                            else:
+                                reply_text = (
+                                    f"I found {resolved_act.activity_code} ({resolved_act.name}). "
+                                    f"The proposed progress update is {proposed_pct}%. Please confirm before I apply it."
+                                )
+                                card.confirm_label = "Confirm Update"
+                                card.reject_label = "Reject"
+                                card.review_label = "Review Details & Audit Safety"
+
+                            db.commit()
+                            return cls._save_and_return_agent_response(
+                                db=db,
+                                conv=conv,
+                                reply_text=reply_text,
+                                action_card=card,
+                            )
+
+                    elif step_result.status == ResolutionSessionStatus.ACTIVE:
+                        conv.status = "WAITING_FOR_USER"
+                        cls._save_update_context(active_res_ev, ev_ctx)
+                        db.commit()
+                        return cls._save_and_return_agent_response(
+                            db=db,
+                            conv=conv,
+                            reply_text=step_result.question_text or "",
+                            action_card=step_result.action_card,
+                        )
+
+                    elif step_result.status in (ResolutionSessionStatus.FAILED, ResolutionSessionStatus.CANCELLED):
+                        active_res_ev.status = "REJECTED" if step_result.status == ResolutionSessionStatus.CANCELLED else "IN_REVIEW"
+                        conv.active_event_id = None
+                        conv.status = "ACTIVE"
+                        cls._save_update_context(active_res_ev, ev_ctx)
+                        db.commit()
+                        return cls._save_and_return_agent_response(
+                            db=db,
+                            conv=conv,
+                            reply_text=step_result.question_text or "",
+                            action_card=None,
+                        )
+
         # Case 2: Standard cancellation when no bulk proposal is pending
         if is_explicit_cancel:
             active_ev = None
@@ -871,7 +1078,28 @@ class TimeAgentService:
                 reply_text = f"A proposed update for {act_code} is currently awaiting your decision. Please confirm or cancel the pending proposal above before sending another request."
             return cls._save_and_return_agent_response(db, conv, reply_text, action_card=None)
 
-        if parsed.intent == "BULK_PROGRESS_REPORT" or (parsed.is_bulk and not is_clarification):
+        # Multi-activity progress updates (e.g. "mechanical activity 1 75% and mechanical acitivity 2 98%")
+        if parsed.activity_updates and len(parsed.activity_updates) >= 2:
+            res = cls._handle_multi_activity_progress(
+                db=db,
+                project=project,
+                conv=conv,
+                parsed=parsed,
+                raw_text=user_content,
+                trigger_message_id=user_msg.id,
+                caller_id=caller_id,
+            )
+            if raw_transcript is not None and res.transcript is None:
+                res.transcript = raw_transcript
+            if detected_audio_language is not None and res.detected_language is None:
+                res.detected_language = detected_audio_language
+            res.conversation_language = conv.language
+            res.conversation_style = conv.language_style
+            res.language_locked = bool(conv.language_locked)
+            return res
+
+        # Governed bulk intent: ONLY when explicit bulk is confirmed (e.g. "update all ...", "mark all completed")
+        if (parsed.intent == "BULK_PROGRESS_REPORT" or (parsed.is_bulk and not is_clarification)) and parsed.is_explicit_bulk:
             res = cls._handle_bulk_progress(
                 db=db,
                 project=project,
@@ -1139,6 +1367,170 @@ class TimeAgentService:
         )
         res = InstitutionalMemoryService.execute_query(db, project_id, req)
         return res.model_dump()
+
+    @classmethod
+    def _handle_multi_activity_progress(
+        cls,
+        db: Session,
+        project: Project,
+        conv: Conversation,
+        parsed: ParsedConversationalIntent,
+        raw_text: str,
+        trigger_message_id: str,
+        caller_id: str,
+    ) -> MessageResponseDTO:
+        resp_lang = cls._resolve_template_language(conv)
+        all_acts = db.query(Activity).filter(Activity.project_id == project.id).all()
+
+        resolved_items = []
+        ambiguous_items = []
+        not_found_items = []
+
+        for cand in parsed.activity_updates:
+            res = ActivityReferenceResolver.resolve(
+                project_id=project.id,
+                catalog=all_acts,
+                raw_reference=cand.activity_reference,
+                explicit_discipline=parsed.discipline,
+            )
+            if res.resolved_activity:
+                act = res.resolved_activity
+                pct = cand.reported_percent if cand.reported_percent is not None else (parsed.override_percent or 100.0)
+                resolved_items.append({
+                    "activity_id": act.id,
+                    "activity_code": act.activity_code,
+                    "activity_name": act.name,
+                    "current_percent": act.percent_complete or 0.0,
+                    "proposed_percent": pct,
+                    "status_reported": cand.status_reported or ("COMPLETED" if pct == 100.0 else "IN_PROGRESS"),
+                })
+            elif res.method == "ambiguous":
+                ambiguous_items.append((cand.activity_reference, res.candidates, cand))
+            else:
+                not_found_items.append(cand.activity_reference)
+
+        if ambiguous_items:
+            amb_ref, cands, cand_cand = ambiguous_items[0]
+            pct = cand_cand.reported_percent if cand_cand.reported_percent is not None else (parsed.override_percent or 100.0)
+            clues = {
+                "reported_percent": pct,
+                "reported_quantity": cand_cand.reported_quantity,
+                "unit": cand_cand.unit,
+                "status_reported": cand_cand.status_reported,
+            }
+            session, step_result = InteractiveActivityResolver.start_session(
+                project_id=project.id,
+                conversation_id=conv.id,
+                original_reference=amb_ref,
+                candidate_activities=cands,
+                extracted_clues=clues,
+                partially_resolved_updates=resolved_items,
+                resp_lang=resp_lang,
+            )
+            event = ExecutionEvent(
+                id=f"ev-{uuid.uuid4().hex[:8]}",
+                project_id=project.id,
+                artifact_id=None,
+                source_type="CONVERSATION",
+                conversation_id=conv.id,
+                message_id=trigger_message_id,
+                verbatim_excerpt=raw_text,
+                description=f"{amb_ref} {raw_text}",
+                reported_activity_code=None,
+                execution_date=project.data_date or datetime.now(timezone.utc).replace(tzinfo=None),
+                status_reported=cand_cand.status_reported or "IN_PROGRESS",
+                status="DRAFT",
+            )
+            db.add(event)
+            db.flush()
+            conv.active_event_id = event.id
+            conv.status = "WAITING_FOR_USER"
+            ctx = cls._get_or_init_update_context(event)
+            ctx["resolution_session"] = session.to_dict()
+            cls._save_update_context(event, ctx)
+            db.commit()
+
+            return cls._save_and_return_agent_response(
+                db=db,
+                conv=conv,
+                reply_text=step_result.question_text or "",
+                action_card=step_result.action_card,
+            )
+
+        if not_found_items and not resolved_items:
+            nf_ref = not_found_items[0]
+            if resp_lang == "hi":
+                reply = f"मुझे इस प्रोजेक्ट के शेड्यूल में '{nf_ref}' से मेल खाती कोई निर्धारित गतिविधि नहीं मिली। कृपया एक्टिविटी कोड या अधिक विशिष्ट विवरण प्रदान करें।"
+            elif resp_lang == "hinglish":
+                reply = f"Mujhe is project ke schedule mein '{nf_ref}' se match hone wali koi scheduled activity nahi mili. Please activity code ya specific description provide karein."
+            else:
+                reply = f"I couldn't find a scheduled activity matching '{nf_ref}' in this project's schedule. Please provide the activity code or a more specific description."
+            return cls._save_and_return_agent_response(db, conv, reply, action_card=None)
+
+        confirm_label = (
+            "सभी अपडेट की पुष्टि करें" if resp_lang == "hi"
+            else ("Sabhi updates confirm karein" if resp_lang == "hinglish"
+            else "Confirm All Updates")
+        )
+        cancel_label = "रद्द करें" if resp_lang == "hi" else "Cancel"
+
+        card = ActionCardDTO(
+            type="BULK_SCOPE_PROPOSAL",
+            proposal_status="PENDING",
+            is_multi_activity=True,
+            bulk_activities=resolved_items,
+            bulk_count=len(resolved_items),
+            scope_label="Multi-Activity Progress Updates",
+            confirm_label=confirm_label,
+            reject_label=cancel_label,
+            options=[
+                {
+                    "label": confirm_label,
+                    "value": "CONFIRM_ALL_BULK",
+                },
+                *[
+                    {
+                        "label": f"{item['activity_code']}: {item['proposed_percent']}%",
+                        "value": item['activity_code'],
+                    }
+                    for item in resolved_items
+                ],
+                {
+                    "label": cancel_label,
+                    "value": "CANCEL",
+                },
+            ],
+        )
+
+        conv.status = "WAITING_FOR_BULK_UPDATE_CONFIRMATION"
+
+        lines = []
+        for item in resolved_items:
+            lines.append(f"- {item['activity_code']} ({item['activity_name']}): {item['current_percent']}% -> {item['proposed_percent']}%")
+        summary_str = "\n".join(lines)
+
+        if resp_lang == "hi":
+            reply_text = (
+                f"मैंने निम्नलिखित गतिविधियों की पहचान की है:\n{summary_str}\n\n"
+                f"Authoritative schedule में इन अपडेट्स को apply करने के लिए कृपया confirm करें।"
+            )
+        elif resp_lang == "hinglish":
+            reply_text = (
+                f"Maine following activities identify ki hain:\n{summary_str}\n\n"
+                f"Authoritative schedule mein apply karne ke liye please confirm karein."
+            )
+        else:
+            reply_text = (
+                f"I identified the following updates:\n{summary_str}\n\n"
+                f"Please confirm to apply these updates to the authoritative schedule."
+            )
+
+        return cls._save_and_return_agent_response(
+            db=db,
+            conv=conv,
+            reply_text=reply_text,
+            action_card=card,
+        )
 
     @classmethod
     def _handle_bulk_progress(
@@ -1572,16 +1964,43 @@ class TimeAgentService:
         if parsed.reported_activity_code:
             ctx["activity_code"] = parsed.reported_activity_code
         elif not ctx.get("activity_code"):
-            extracted_code = ConversationalParser.extract_activity_code(raw_text)
-            if extracted_code:
-                ctx["activity_code"] = extracted_code
+            # Check if candidate reference can be resolved via ActivityReferenceResolver
+            cand_ref = parsed.activity_updates[0].activity_reference if (parsed.activity_updates and len(parsed.activity_updates) == 1) else None
+            res = None
+            if cand_ref and project_acts:
+                res = ActivityReferenceResolver.resolve(
+                    project_id=project_acts[0].project_id,
+                    catalog=project_acts,
+                    raw_reference=cand_ref,
+                    explicit_discipline=parsed.discipline,
+                )
+            if res and res.resolved_activity:
+                ctx["activity_code"] = res.resolved_activity.activity_code
+                ctx["activity_id"] = res.resolved_activity.id
+                ctx["activity_name"] = res.resolved_activity.name
             else:
-                raw_clean_up = raw_text.strip().upper()
-                for a in project_acts:
-                    code_up = a.activity_code.upper()
-                    if code_up in raw_clean_up or code_up.replace("-", "") in raw_clean_up or code_up.replace("-", " ") in raw_clean_up:
-                        ctx["activity_code"] = a.activity_code
-                        break
+                extracted_code = ConversationalParser.extract_activity_code(raw_text)
+                if extracted_code:
+                    ctx["activity_code"] = extracted_code
+                else:
+                    if project_acts:
+                        res_raw = ActivityReferenceResolver.resolve(
+                            project_id=project_acts[0].project_id,
+                            catalog=project_acts,
+                            raw_reference=raw_text,
+                            explicit_discipline=parsed.discipline,
+                        )
+                        if res_raw and res_raw.resolved_activity:
+                            ctx["activity_code"] = res_raw.resolved_activity.activity_code
+                            ctx["activity_id"] = res_raw.resolved_activity.id
+                            ctx["activity_name"] = res_raw.resolved_activity.name
+                    if not ctx.get("activity_code"):
+                        raw_clean_up = raw_text.strip().upper()
+                        for a in project_acts:
+                            code_up = a.activity_code.upper()
+                            if code_up in raw_clean_up or code_up.replace("-", "") in raw_clean_up or code_up.replace("-", " ") in raw_clean_up:
+                                ctx["activity_code"] = a.activity_code
+                                break
 
         # 2. Discipline
         if parsed.discipline:
@@ -1810,7 +2229,7 @@ class TimeAgentService:
                 return cls._save_and_return_agent_response(db=db, conv=conv, reply_text=reply_text, action_card=None)
 
         # 2. Handle "All of them" / bulk intent during clarification turn
-        if parsed.is_bulk or any(clean_ans == term or clean_ans.startswith(term) for term in [
+        if (parsed.is_bulk and parsed.is_explicit_bulk) or any(clean_ans == term or clean_ans.startswith(term) for term in [
             "all of them", "all", "both", "both of them", "all of these", "update all", "update all of them", "all activities"
         ]):
             if event and not parsed.discipline and event.discipline:
@@ -2063,13 +2482,146 @@ class TimeAgentService:
 
             return cls._save_and_return_agent_response(db=db, conv=conv, reply_text=reply, action_card=None)
 
+        # Check if activity reference is ambiguous via ActivityReferenceResolver
+        cand_ref = parsed.activity_updates[0].activity_reference if (parsed.activity_updates and len(parsed.activity_updates) == 1) else parsed.reported_activity_code
+        if cand_ref and project_acts and not ctx.get("activity_id"):
+            res_ref = ActivityReferenceResolver.resolve(
+                project_id=project.id,
+                catalog=project_acts,
+                raw_reference=cand_ref,
+                explicit_discipline=parsed.discipline,
+            )
+            if res_ref and res_ref.resolved_activity:
+                top_act = res_ref.resolved_activity
+                conv.active_activity_id = top_act.id
+                ctx["activity_id"] = top_act.id
+                ctx["activity_code"] = top_act.activity_code
+                ctx["activity_name"] = top_act.name
+                ctx["status"] = "ACTIVITY_IDENTIFIED"
+            elif res_ref and res_ref.method == "ambiguous" and res_ref.candidates:
+                pct_val = parsed.override_percent
+                if pct_val is None and parsed.activity_updates:
+                    pct_val = parsed.activity_updates[0].reported_percent
+                has_progress_report = (
+                    pct_val is not None
+                    or parsed.quantity is not None
+                    or any(term in raw_text.lower() for term in ["update", "percent", "%", "set to", "to ", "complete", "completed", "finish", "finished", "done", "pragati"])
+                )
+                if has_progress_report:
+                    clues = {
+                        "reported_percent": pct_val,
+                        "reported_quantity": parsed.quantity,
+                        "unit": parsed.unit,
+                        "status_reported": parsed.status_reported,
+                    }
+                    session, step_result = InteractiveActivityResolver.start_session(
+                        project_id=project.id,
+                        conversation_id=conv.id,
+                        original_reference=cand_ref,
+                        candidate_activities=res_ref.candidates,
+                        extracted_clues=clues,
+                        resp_lang=resp_lang,
+                    )
+                    conv.clarification_turns += 1
+                    conv.status = "WAITING_FOR_USER"
+                    ctx["resolution_session"] = session.to_dict()
+                    cls._save_update_context(event, ctx)
+                    db.commit()
+                    return cls._save_and_return_agent_response(
+                        db=db,
+                        conv=conv,
+                        reply_text=step_result.question_text or "",
+                        action_card=step_result.action_card,
+                    )
+            elif res_ref and (res_ref.resolution_status == "NO_MATCH" or res_ref.method in ("no_match", "none")):
+                # Check if MatchingService has a high-confidence match for conversational phrasing (e.g. "Foundation pour completed")
+                eval_check = MatchingService.evaluate_event_for_agent(db, event)
+                top_m = eval_check.selected_candidate if eval_check else None
+                top_text_score = 0.0
+                if top_m and top_m.score_breakdown:
+                    top_text_score = top_m.score_breakdown.get("s_text", 0.0)
+
+                # If MatchingService has high text similarity (>= 0.70) with an existing activity,
+                # then this was conversational phrasing that MatchingService can resolve/disambiguate.
+                # Otherwise, it is a genuine Section 32 NO_MATCH (e.g. "mechanical welding activity")
+                if not (top_m and top_text_score >= 0.70):
+                    # -------------------------------------------------------------
+                    # SECTION 32: NO-MATCH / NON-EXISTENT ACTIVITIES
+                    # -------------------------------------------------------------
+                    conv.clarification_turns += 1
+                    conv.status = "WAITING_FOR_USER"
+                    conv.active_activity_id = None
+                    ctx["status"] = "NO_MATCH"
+                    ctx["last_question_type"] = "no_match"
+                    ctx["resolution_status"] = "NO_MATCH"
+                if event:
+                    event.status = "DRAFT"
+                    cls._save_update_context(event, ctx)
+
+                cand_clean = cand_ref.strip()
+                has_suggestions = bool(res_ref.candidates)
+
+                if resp_lang == "hi":
+                    if has_suggestions:
+                        prefix = f"मुझे इस प्रोजेक्ट के शेड्यूल में '{cand_clean}' से मेल खाती कोई निर्धारित गतिविधि नहीं मिली।"
+                        sugg_lines = "\n".join([f"{idx+1}. {c.name}" for idx, c in enumerate(res_ref.candidates[:5])])
+                        reply_text = (
+                            f"{prefix} ये निर्धारित गतिविधियां संबंधित हो सकती हैं:\n"
+                            f"{sugg_lines}\n\n"
+                            f"ये केवल संभावित सुझाव हैं, पुष्टि किए गए मिलान नहीं। कृपया सटीक गतिविधि कोड बताएं या अधिक विशिष्ट विवरण प्रदान करें।"
+                        )
+                    else:
+                        reply_text = (
+                            f"मुझे इस प्रोजेक्ट के शेड्यूल में '{cand_clean}' से मेल खाती कोई निर्धारित गतिविधि नहीं मिली। "
+                            f"कृपया गतिविधि कोड या अधिक विशिष्ट विवरण प्रदान करें।"
+                        )
+                elif resp_lang == "hinglish":
+                    if has_suggestions:
+                        prefix = f"Mujhe is project ke schedule mein '{cand_clean}' se match hone wali koi scheduled activity nahi mili."
+                        sugg_lines = "\n".join([f"{idx+1}. {c.name}" for idx, c in enumerate(res_ref.candidates[:5])])
+                        reply_text = (
+                            f"{prefix} Yeh scheduled activities related ho sakti hain:\n"
+                            f"{sugg_lines}\n\n"
+                            f"Yeh sirf possible suggestions hain, confirmed match nahi. Please activity code provide karein ya specific description batayein."
+                        )
+                    else:
+                        reply_text = (
+                            f"Mujhe is project ke schedule mein '{cand_clean}' se match hone wali koi scheduled activity nahi mili. "
+                            f"Please activity code ya specific description provide karein."
+                        )
+                else:
+                    if has_suggestions:
+                        prefix = f"I couldn't find a scheduled activity matching '{cand_clean}' in this project's schedule."
+                        sugg_lines = "\n".join([f"{idx+1}. {c.name}" for idx, c in enumerate(res_ref.candidates[:5])])
+                        reply_text = (
+                            f"{prefix} These scheduled activities may be related:\n"
+                            f"{sugg_lines}\n\n"
+                            f"These are possible suggestions, not confirmed matches. Please provide the activity code or a more specific description."
+                        )
+                    else:
+                        reply_text = (
+                            f"I couldn't find a scheduled activity matching that description in this project's schedule. "
+                            f"Please provide the activity code or a more specific description."
+                        )
+
+                db.commit()
+                return cls._save_and_return_agent_response(
+                    db=db,
+                    conv=conv,
+                    reply_text=reply_text,
+                    action_card=None,
+                )
+
         # 6. Deterministic evaluation with accumulated context
         eval_result = MatchingService.evaluate_event_for_agent(db, event)
 
         # Branch on Matching Confidence Routing
-        if eval_result.route == "AUTO_LINK" and eval_result.selected_candidate:
-            top_cand = eval_result.selected_candidate
-            target_activity = db.query(Activity).filter(Activity.id == top_cand.activity_id).first()
+        top_cand = eval_result.selected_candidate if eval_result else None
+        if (eval_result.route == "AUTO_LINK" and top_cand) or ctx.get("activity_id"):
+            if ctx.get("activity_id"):
+                target_activity = db.query(Activity).filter(Activity.id == ctx["activity_id"]).first()
+            else:
+                target_activity = db.query(Activity).filter(Activity.id == top_cand.activity_id).first()
             conv.active_activity_id = target_activity.id
             ctx["activity_id"] = target_activity.id
             ctx["activity_code"] = target_activity.activity_code
@@ -2207,7 +2759,7 @@ class TimeAgentService:
                 execution_date=event.execution_date.strftime("%Y-%m-%d"),
             )
 
-            score_pct = int(round(top_cand.match_score * 100))
+            score_pct = int(round(top_cand.match_score * 100)) if top_cand else 100
             delta_note = f" (+{incremental_qty} {event.unit})" if incremental_qty else ""
             qty_display = f"+{incremental_qty} {event.unit}" if incremental_qty else "Reported"
             loc_display = event.location or target_activity.activity_code
@@ -2274,17 +2826,17 @@ class TimeAgentService:
             desc_cited = ctx.get("description") or raw_text
             if resp_lang == "hi":
                 question = (
-                    f"मुझे इस project में उस विवरण से मेल खाती कोई activity नहीं मिली। "
+                    f"मुझे इस प्रोजेक्ट के शेड्यूल में उस विवरण से मेल खाती कोई निर्धारित गतिविधि नहीं मिली। "
                     f"कृपया कोई अन्य identifier प्रदान करें, जैसे activity ID, WBS, equipment का नाम, या अधिक विशिष्ट विवरण।"
                 )
             elif resp_lang == "hinglish":
                 question = (
-                    f"Mujhe is project mein us description se match hone wali koi activity nahi mili. "
+                    f"Mujhe is project ke schedule mein us description se match hone wali koi scheduled activity nahi mili. "
                     f"Please koi doosra identifier provide karein, jaise activity ID, WBS, equipment name, ya specific description."
                 )
             else:
                 question = (
-                    f"I couldn't find a matching activity for that description in this project. "
+                    f"I couldn't find a matching activity for that description in this project's schedule. "
                     f"Please provide another identifier, such as the activity ID, WBS, equipment name, or a more specific activity description."
                 )
 
@@ -2932,18 +3484,48 @@ class TimeAgentService:
         target_pct = payload.target_percent if payload.target_percent is not None else 100.0
         updated_records = []
 
+        # Check if the proposal has per-activity proposed_percent from prior agent message metadata
+        per_act_pct: Dict[str, float] = {}
+        per_act_status: Dict[str, str] = {}
+        prior_msgs_recent = (
+            db.query(ConversationMessage)
+            .filter(ConversationMessage.conversation_id == conv.id, ConversationMessage.sender == "AGENT")
+            .order_by(ConversationMessage.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        for m in prior_msgs_recent:
+            if m.message_metadata:
+                try:
+                    meta = json.loads(m.message_metadata) if isinstance(m.message_metadata, str) else m.message_metadata
+                    if meta.get("type") == "BULK_SCOPE_PROPOSAL" and meta.get("proposal_status") == "PENDING":
+                        for b_act in meta.get("bulk_activities", []):
+                            act_id = b_act.get("activity_id")
+                            if act_id and b_act.get("proposed_percent") is not None:
+                                per_act_pct[act_id] = float(b_act["proposed_percent"])
+                            if act_id and b_act.get("status_reported"):
+                                per_act_status[act_id] = b_act["status_reported"]
+                        break
+                except Exception:
+                    pass
+
         try:
             for act in target_acts:
+                act_target_pct = per_act_pct.get(act.id, target_pct)
+                act_status = per_act_status.get(
+                    act.id,
+                    payload.status_reported or ("COMPLETED" if act_target_pct == 100.0 else "IN_PROGRESS"),
+                )
                 ev = ExecutionEvent(
                     id=f"ev-{uuid.uuid4().hex[:8]}",
                     project_id=project_id,
                     source_type="CONVERSATION",
                     conversation_id=conv.id,
-                    verbatim_excerpt=f"Bulk update {act.activity_code} to {target_pct}%",
-                    description=f"Bulk progress update to {target_pct}% complete",
+                    verbatim_excerpt=f"Update {act.activity_code} to {act_target_pct}%",
+                    description=f"Progress update to {act_target_pct}% complete",
                     reported_activity_code=act.activity_code,
                     execution_date=datetime.now(timezone.utc).replace(tzinfo=None),
-                    status_reported=payload.status_reported or "COMPLETED",
+                    status_reported=act_status,
                     extraction_confidence=1.0,
                     status="AUTO_LINKED",
                 )
@@ -2956,7 +3538,7 @@ class TimeAgentService:
                     event_id=ev.id,
                     activity_id=act.id,
                     user_id=caller_id,
-                    override_percent=target_pct,
+                    override_percent=act_target_pct,
                     action_name="TIME_AGENT_BULK_UPDATE",
                     quantity_semantics="INCREMENTAL",
                     commit=False,
@@ -2989,12 +3571,18 @@ class TimeAgentService:
                     except Exception:
                         pass
 
-            summary_codes = ", ".join([r["activity_code"] for r in updated_records])
+            if per_act_pct and len(set(per_act_pct.values())) > 1:
+                summary_details = ", ".join([f"{r['activity_code']} to {r['new_percent']}%" for r in updated_records])
+                summary_text = f"Successfully updated {len(updated_records)} activities: {summary_details}. Ledger audit records created and schedule refreshed."
+            else:
+                summary_codes = ", ".join([r["activity_code"] for r in updated_records])
+                summary_text = f"Successfully updated {len(updated_records)} activities to {target_pct}% complete: {summary_codes}. Ledger audit records created and schedule refreshed."
+
             confirm_msg = ConversationMessage(
                 id=f"msg-{uuid.uuid4().hex[:8]}",
                 conversation_id=conv.id,
                 sender="AGENT",
-                content=f"Successfully updated {len(updated_records)} activities to {target_pct}% complete: {summary_codes}. Ledger audit records created and schedule refreshed.",
+                content=summary_text,
             )
             db.add(confirm_msg)
             db.commit()

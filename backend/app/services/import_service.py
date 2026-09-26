@@ -70,9 +70,13 @@ class ImportService:
 
         # 2. Run backend validation rules
         validation_errors = ValidationService.validate_canonical_schedule(canonical_data)
-        if validation_errors:
-            logger.warning(f"Validation failed for '{filename}' with {len(validation_errors)} error(s)")
-            raise ValidationException(validation_errors)
+        fatal_errors = [e for e in validation_errors if getattr(e, "severity", "ERROR") == "ERROR"]
+        warnings = [e for e in validation_errors if getattr(e, "severity", "ERROR") == "WARNING"]
+        if warnings:
+            logger.info(f"Schedule '{filename}' contains {len(warnings)} non-fatal warning(s)")
+        if fatal_errors:
+            logger.warning(f"Validation failed for '{filename}' with {len(fatal_errors)} fatal error(s)")
+            raise ValidationException(fatal_errors)
 
         # 3. Transactional atomic insertion into PostgreSQL
         try:

@@ -13,6 +13,12 @@ class XlsxParser(BaseParser):
         try:
             wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
         except Exception as e:
+            err_msg = str(e).lower()
+            if "does not support the old .xls" in err_msg or filename.lower().endswith(".xls"):
+                raise ParserError(
+                    f"Legacy Excel (.xls) binary format is not supported for '{filename}'. "
+                    "Please convert the file to modern Excel (.xlsx) or CSV (.csv) format and re-upload."
+                )
             raise ParserError(f"Failed to open Excel workbook: {str(e)}")
 
         if not wb.sheetnames:

@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 import httpx
 
-from app.schemas.agent import ParsedConversationalIntent
+from app.schemas.agent import ParsedConversationalIntent, ActivityUpdateCandidate
 from app.services.credential_resolver import CredentialResolver
 from app.services.extraction_service import ExtractionService
 
@@ -210,25 +210,32 @@ class ConversationalParser:
         norm_text = cls.normalize_indic_digits(text)
 
         # 1. Standard pattern: CIV-1001, CIV 1001, civ-1001, civ1001, STR-204, etc.
+        STOP_PREFIXES = {
+            "TO", "IN", "AT", "ON", "BY", "FOR", "IS", "AS", "AN", "SET",
+            "THE", "AND", "OR", "OF", "UP", "DO", "ALL", "NO", "NOT", "PER"
+        }
         direct = re.search(r"\b([A-Za-z]{2,5})[-_\s]?(\d{3,5})\b", norm_text)
         if direct:
             prefix = direct.group(1).upper()
             num = direct.group(2)
-            for canon, aliases in cls.DISCIPLINE_PREFIX_MAP.items():
-                if prefix == canon or prefix.lower() in aliases:
-                    return f"{canon}-{num}"
-            if 2 <= len(prefix) <= 4:
-                return f"{prefix}-{num}"
+            if prefix not in STOP_PREFIXES:
+                for canon, aliases in cls.DISCIPLINE_PREFIX_MAP.items():
+                    if prefix == canon or prefix.lower() in aliases:
+                        return f"{canon}-{num}"
+                if 2 <= len(prefix) <= 4:
+                    return f"{prefix}-{num}"
 
         # 2. Multilingual discipline alias + number (e.g. 'सिविल की 1001', 'சிவில் இன் 1001')
+        # Strip explicit percentages so numbers like 100% or 98% are never misidentified as activity code numbers
+        text_no_pct = re.sub(r"\b\d+(?:\.\d+)?\s*(?:%|percent\b|प्रतिशत\b)", " ", norm_text, flags=re.IGNORECASE)
         for canon_prefix, aliases in cls.DISCIPLINE_PREFIX_MAP.items():
             for alias in aliases:
                 p1 = rf"\b{re.escape(alias)}\b[^\d]{{0,35}}\b(\d{{3,5}})\b" if alias.isascii() else rf"{re.escape(alias)}[^\d]{{0,35}}\b(\d{{3,5}})\b"
-                m = re.search(p1, norm_text, re.IGNORECASE)
+                m = re.search(p1, text_no_pct, re.IGNORECASE)
                 if m:
                     return f"{canon_prefix}-{m.group(1)}"
                 p2 = rf"\b(\d{{3,5}})\b[^\d]{{0,35}}\b{re.escape(alias)}\b" if alias.isascii() else rf"\b(\d{{3,5}})\b[^\d]{{0,35}}{re.escape(alias)}"
-                m2 = re.search(p2, norm_text, re.IGNORECASE)
+                m2 = re.search(p2, text_no_pct, re.IGNORECASE)
                 if m2:
                     return f"{canon_prefix}-{m2.group(1)}"
 
@@ -768,6 +775,23 @@ USER MESSAGE:
                                 parsed["discipline"] = "Electrical"
                                 if parsed.get("bulk_scope"):
                                     parsed["bulk_scope"]["discipline"] = "Electrical"
+
+                            # Enforce Bulk Safety Invariant: Bulk requires explicit bulk markers
+                            has_explicit_bulk_marker = any(w in text.lower() for w in [
+                                "all", "all of them", "both", "both of them", "all activities", "all tasks",
+                                "every", "complete all", "finish all", "update all", "update all of them",
+                                "sab", "sabhi", "sare", "saare", "dono", "sab ke sab", "sabhi activities",
+                                "sab activities", "pure", "poore", "poora", "puri"
+                            ]) or any(w in text for w in ["सभी", "सारे", "दोनों", "सब"])
+                            parsed["is_explicit_bulk"] = has_explicit_bulk_marker
+                            if not has_explicit_bulk_marker:
+                                parsed["is_bulk"] = False
+                                if parsed.get("intent") == "BULK_PROGRESS_REPORT":
+                                    parsed["intent"] = "PROGRESS_UPDATE_REQUEST" if parsed.get("override_percent") is not None else "PROGRESS_REPORT"
+
+                            # Always extract deterministic activity updates
+                            parsed["activity_updates"] = cls.extract_activity_updates(text)
+
                             return ParsedConversationalIntent(**parsed)
                     else:
                         logger.warning(f"Gemini model {model} returned HTTP {resp.status_code}")
@@ -775,6 +799,192 @@ USER MESSAGE:
                 logger.warning(f"Gemini API call to {model} failed: {e}")
 
         return None
+
+    @classmethod
+    def extract_activity_updates(cls, text: str) -> List[ActivityUpdateCandidate]:
+        """
+        Extracts individual per-activity update candidates from natural language.
+        Supports multi-activity utterances, punctuation variations, conjunctions,
+        and single-activity clauses while enforcing percentage precedence.
+        """
+        if not text or not text.strip():
+            return []
+
+        t = cls.normalize_indic_digits(text.strip())
+        lower = t.lower()
+
+        # Split into distinct activity clauses
+        act_lookahead = (
+            r"(?="
+            r"(?:[A-Za-z]{2,5}[-_]?\d{2,6})"
+            r"|(?:(?:mechanical|civil|electrical|piping|structural|insulation|painting)?\s*(?:activity|acitivity|activty|task|act)\s*[-_]?\s*\d+)"
+            r"|(?:(?:mechanical|civil|electrical|piping|structural|insulation|painting)\s+\d+)"
+            r"|(?:(?:activity|acitivity|activty|task)\s*[-_]?\s*\d+)"
+            r")"
+        )
+
+        split_pattern = rf"\s*(?:;|\band\b|\baur\b|\bऔर\b|\bतथा\b|\bएवं\b|,\s*{act_lookahead})\s*"
+        raw_clauses = [c.strip() for c in re.split(split_pattern, t, flags=re.IGNORECASE) if c and c.strip()]
+
+        if len(raw_clauses) <= 1 and "," in t:
+            comma_parts = [c.strip() for c in t.split(",") if c.strip()]
+            has_act_mentions = sum(1 for p in comma_parts if re.search(r"\b(?:activity|acitivity|activty|task|\d+\s*%|[A-Za-z]{2,5}-\d+)\b", p, re.I))
+            if has_act_mentions >= 2:
+                raw_clauses = comma_parts
+
+        candidates: List[ActivityUpdateCandidate] = []
+
+        for clause in raw_clauses:
+            cl_lower = clause.lower()
+
+            ref = None
+            code = cls.extract_activity_code(clause)
+            if code:
+                ref = code
+            else:
+                m_disc_act = re.search(
+                    r"\b((?:mechanical|civil|electrical|piping|structural|insulation|painting)?\s*(?:activity|acitivity|activty|task|act)\s*[-_]?\s*\d+(?!\s*(?:%|percent\b|प्रतिशत\b)))\b",
+                    clause,
+                    re.IGNORECASE,
+                )
+                if m_disc_act:
+                    ref = m_disc_act.group(1).strip()
+                else:
+                    m_disc_num = re.search(
+                        r"\b((?:mechanical|civil|electrical|piping|structural|insulation|painting)\s+\d+(?!\s*(?:%|percent\b|प्रतिशत\b)))\b",
+                        clause,
+                        re.IGNORECASE,
+                    )
+                    if m_disc_num:
+                        ref = m_disc_num.group(1).strip()
+                    else:
+                        m_act_num = re.search(
+                            r"\b((?:activity|acitivity|activty|task)\s*[-_]?\s*\d+(?!\s*(?:%|percent\b|प्रतिशत\b)))\b",
+                            clause,
+                            re.IGNORECASE,
+                        )
+                        if m_act_num:
+                            ref = m_act_num.group(1).strip()
+                        else:
+                            # Strip conversational verbs/prefixes from clause (multilingual: English, Hindi, Hinglish)
+                            c_clean = re.sub(
+                                r"^(?:मैंने|हम|हमने|i\s+|we\s+)?\s*(?:have\s+)?(?:completed|complete|finished|finish|done|started|start|updated|update|set|marked|reported|update\s+kardo|update\s+karna\s+hai|update\s+karni\s+hai|kardo|kar\s+do)?\s+(?:the\s+)?",
+                                "",
+                                clause.strip(),
+                                flags=re.IGNORECASE,
+                            )
+                            # Strip trailing progress percentages, quantities, completion indicators, or status phrases
+                            c_clean = re.sub(
+                                r"\s+(?:to|at|progress|by|ko|mein|me|का|की|को|में)?\s*\d+(?:\.\d+)?\s*(?:%|percent|प्रतिशत)?\s*(?:complete\s*ho\s*gayi\s*hai|complete\s*ho\s*gaya\s*hai|ho\s*gaya\s*hai|ho\s*gayi\s*hai|ho\s*gaya|ho\s*gayi|done|completed|complete|finish|finished|pura\s*kiya|poora\s*kiya|पूरा\s*किया|पूरा|हो\s*गया|हो\s*गई|कर\s*दिया)?[\.\?\!|।]?\s*$",
+                                "",
+                                c_clean.strip(),
+                                flags=re.IGNORECASE,
+                            )
+                            c_clean = c_clean.strip().rstrip(".,;:।")
+
+                            has_act_keyword = bool(
+                                re.search(r"\b(?:activity|acitivity|activty|task|act|action|काम|कार्य|गतिविधि|एक्टिविटी)\b", clause, re.IGNORECASE)
+                            )
+                            has_pct = bool(
+                                re.search(r"\b\d+(?:\.\d+)?\s*(?:%|percent\b|प्रतिशत\b)", clause, re.IGNORECASE)
+                                or re.search(r"\b(?:to|progress|set\s+to|at)\s+\d+(?:\.\d+)?\b", clause, re.IGNORECASE)
+                            )
+                            discs = cls.extract_multilingual_disciplines(clause)
+
+                            # Only treat as a candidate activity reference if:
+                            # 1) Clause explicitly mentions an activity keyword (e.g. 'mechanical welding activity'), OR
+                            # 2) Clause has an explicit percentage/progress value with a discipline or descriptive words (e.g. 'mechanical turbine generator to 50%'), OR
+                            # 3) Clause mentions a discipline name
+                            if has_act_keyword:
+                                if c_clean and len(c_clean.split()) >= 1 and not any(c_clean.lower() == p for p in ["i", "we", "the", "a", "an", "update", "progress", "to", "completed", "done"]):
+                                    ref = c_clean
+                                else:
+                                    ref = "activity"
+                            elif has_pct:
+                                if c_clean and len(c_clean.split()) >= 1 and not any(c_clean.lower() == p for p in ["i", "we", "the", "a", "an", "update", "progress", "to", "completed", "done"]):
+                                    ref = c_clean
+                                elif discs:
+                                    ref = discs[0].lower()
+                            elif discs:
+                                ref = discs[0].lower()
+
+            pct = None
+            pct_m = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:%|percent\b|प्रतिशत\b)", clause, re.IGNORECASE)
+            if pct_m:
+                try:
+                    pct = float(pct_m.group(1))
+                except ValueError:
+                    pct = None
+            else:
+                c_no_ref = clause
+                if code:
+                    c_no_ref = re.sub(rf"\b{re.escape(code)}\b", "", c_no_ref, flags=re.IGNORECASE)
+                if ref:
+                    c_no_ref = re.sub(rf"\b{re.escape(ref)}\b", "", c_no_ref, flags=re.IGNORECASE)
+                # Strip locations so location numbers (Unit 4, Area 2, Block 1, etc.) are never mistaken for percentages
+                c_no_ref = re.sub(r"\b(?:unit|area|block|pier|level|foundation|stage|phase|यूनिट)\s*[-_]?\s*\d+\b", "", c_no_ref, flags=re.IGNORECASE)
+                c_no_ref = re.sub(r"\b(?:activity|acitivity|activty|task)\s*[-_]?\s*\d+\b", "", c_no_ref, flags=re.IGNORECASE)
+                c_no_ref = re.sub(r"\b\d+(?:\.\d+)?\s*(?:m3|cum|tonnes|tons|t|m|mtr|sqm|nos)\b", "", c_no_ref, flags=re.IGNORECASE)
+                # Check for explicit progress marker: 'to 75', 'progress 80', 'at 90'
+                prog_m = re.search(r"\b(?:to|progress|set\s+to|at)\s+(\d+(?:\.\d+)?)\b", c_no_ref, re.IGNORECASE)
+                if prog_m:
+                    try:
+                        val = float(prog_m.group(1))
+                        if 0.0 <= val <= 100.0:
+                            pct = val
+                    except ValueError:
+                        pass
+                elif len(raw_clauses) >= 2:
+                    num_m = re.search(r"\b(\d+(?:\.\d+)?)\b", c_no_ref)
+                    if num_m:
+                        try:
+                            val = float(num_m.group(1))
+                            if 0.0 <= val <= 100.0:
+                                pct = val
+                        except ValueError:
+                            pass
+
+            if not ref:
+                if pct is not None:
+                    ref = clause.strip()
+                else:
+                    continue
+
+            qty = None
+            unit = None
+            qty_m = re.search(
+                r"\b(\d+(?:\.\d+)?)\s*(cubic meters?|m3|cum|cu\.m|tonnes?|tons?|t|meters?|mtr|m|sqm|m2|nos|ea|each)\b",
+                cl_lower,
+            )
+            if qty_m:
+                try:
+                    qty = float(qty_m.group(1))
+                    unit = ExtractionService.normalize_unit(qty_m.group(2))
+                except (ValueError, TypeError):
+                    pass
+
+            is_comp = (
+                any(w in cl_lower for w in cls.COMPLETION_VERBS_LATIN)
+                or any(w in clause for w in cls.COMPLETION_VERBS_INDIC)
+            )
+            status = "COMPLETED" if is_comp else "IN_PROGRESS"
+
+            if pct is None and qty is None and is_comp:
+                pct = 100.0
+
+            candidates.append(
+                ActivityUpdateCandidate(
+                    activity_reference=ref,
+                    reported_percent=pct,
+                    reported_quantity=qty,
+                    unit=unit,
+                    status_reported=status,
+                    confidence=1.0 if code else 0.9,
+                    raw_clause=clause,
+                )
+            )
+
+        return candidates
 
     @classmethod
     def parse_with_rules(
@@ -902,6 +1112,10 @@ USER MESSAGE:
             # Strip location numbers (e.g. Unit 4, Unit-4, Pier 2, Level 3, Block 5, F-204, etc.)
             text_no_code = re.sub(r"\b(?:Unit|Pier|Level|Block|Area|Foundation|यूनिट)\s*[-_]?\s*\d+\b", "", text_no_code, flags=re.IGNORECASE)
             text_no_code = re.sub(r"\b[A-Za-z0-9]+-[A-Za-z0-9]+\b", "", text_no_code)
+            # Strip activity identifiers so activity 1, acitivity 2, task 02 are NOT captured as quantity 1.0
+            text_no_code = re.sub(r"\b(?:activity|act|acitivity|activty|task|कार्य|काम|एक्टिविटी)\s*[-_]?\s*\d+\b", "", text_no_code, flags=re.IGNORECASE)
+            # Strip percentages so 75%, 98% are not captured as quantity
+            text_no_code = re.sub(r"\b\d+(?:\.\d+)?\s*%", "", text_no_code)
             stand_qty = re.search(r"\b(\d+(?:\.\d+)?)\b", text_no_code)
             if stand_qty and intent in ("PROGRESS_REPORT", "CLARIFICATION_RESPONSE", "PROGRESS_UPDATE_REQUEST"):
                 try:
@@ -1051,8 +1265,11 @@ USER MESSAGE:
         has_bulk_keyword = (
             any(re.search(rf"\b{re.escape(bk)}\b", clean_norm) for bk in bulk_keywords)
             or any(bk in t for bk in indic_bulk_keywords)
-            or len(extracted_discs) > 1
         )
+        is_explicit_bulk = has_bulk_keyword
+
+        # Multi-activity updates check
+        updates_in_t = cls.extract_activity_updates(t)
 
         indic_scope_words = [
             "काम", "कार्य", "एक्टिविटी", "एक्टिविटीज", "गतिविधियों", "गतिविधि",
@@ -1073,13 +1290,19 @@ USER MESSAGE:
             ]) or any(t.startswith(term) for term in ["सभी", "सारे", "सब", "அனைத்து", "அனைத்தும்", "எல்லாம்"])
         )
 
-        if is_direct_bulk_clarification:
+        if len(updates_in_t) >= 2:
+            is_bulk = False
+            is_explicit_bulk = False
+            intent = "PROGRESS_REPORT"
+        elif is_direct_bulk_clarification:
             intent = "CLARIFICATION_RESPONSE"
             is_bulk = True
-        elif not (is_query_start or is_query_phrase) and (has_bulk_keyword or len(extracted_discs) > 1) and (has_scope_indicator or len(extracted_discs) > 0) and not reported_code:
+            is_explicit_bulk = True
+        elif not (is_query_start or is_query_phrase) and has_bulk_keyword and (has_scope_indicator or len(extracted_discs) > 0) and not reported_code:
             intent = "BULK_PROGRESS_REPORT"
             is_bulk = True
-            if is_completed:
+            is_explicit_bulk = True
+            if is_completed and override_percent is None:
                 override_percent = 100.0
                 status_reported = "COMPLETED"
         elif any(phrase in clean_norm for phrase in [
@@ -1141,6 +1364,7 @@ USER MESSAGE:
             intent=intent,
             confidence=0.88 if intent != "INFORMATION_QUERY" else 0.95,
             is_bulk=is_bulk,
+            is_explicit_bulk=is_explicit_bulk,
             bulk_scope=bulk_scope,
             entities_present=entities_present,
             quantity=qty,
@@ -1157,6 +1381,7 @@ USER MESSAGE:
             override_percent=override_percent,
             description=t,
             detected_language=detected_lang,
+            activity_updates=updates_in_t,
         )
 
     @classmethod
@@ -1256,7 +1481,35 @@ USER MESSAGE:
             except (ValueError, TypeError):
                 pass
 
-        # 2. Guarantee completion detection and 100% override when completed
+        # Attach parsed activity updates
+        parsed.activity_updates = cls.extract_activity_updates(text)
+
+        # Quantity Semantics fallback
+        if parsed.quantity is not None and (parsed.quantity_semantics == "UNKNOWN" or not parsed.quantity_semantics):
+            if any(term in text.lower() for term in ["today", "incremental", "this shift", "additional", "more", "aaj", "aaj ka", "aur"]) or "आज" in text:
+                parsed.quantity_semantics = "INCREMENTAL"
+            elif any(term in text.lower() for term in ["cumulative", "total to date", "total so far", "in total", "kul", "ab tak", "milakar"]) or any(term in text for term in ["कुल", "अब तक"]):
+                parsed.quantity_semantics = "CUMULATIVE"
+
+        # Multi-activity updates take precedence over uniform bulk
+        if len(parsed.activity_updates) >= 2:
+            parsed.is_bulk = False
+            parsed.is_explicit_bulk = False
+            parsed.intent = "PROGRESS_REPORT"
+        elif len(parsed.activity_updates) == 1:
+            cand = parsed.activity_updates[0]
+            if cand.reported_percent is not None:
+                parsed.override_percent = cand.reported_percent
+                if "override_percent" not in parsed.entities_present:
+                    parsed.entities_present.append("override_percent")
+            if cand.status_reported:
+                parsed.status_reported = cand.status_reported
+            if cand.reported_quantity is not None and parsed.quantity is None:
+                parsed.quantity = cand.reported_quantity
+                if cand.unit and parsed.unit is None:
+                    parsed.unit = cand.unit
+
+        # 2. Guarantee completion detection and percentage precedence
         is_comp = (
             any(w in text.lower() for w in cls.COMPLETION_VERBS_LATIN)
             or any(w in text for w in cls.COMPLETION_VERBS_INDIC)
@@ -1264,30 +1517,20 @@ USER MESSAGE:
         if is_comp and parsed.intent != "INFORMATION_QUERY":
             parsed.status_reported = "COMPLETED"
             discs = cls.extract_multilingual_disciplines(text)
-            if parsed.reported_activity_code:
-                if parsed.override_percent is None:
-                    parsed.override_percent = 100.0
-                    if "override_percent" not in parsed.entities_present:
-                        parsed.entities_present.append("override_percent")
-            elif len(discs) > 1 or parsed.is_bulk:
+            if parsed.override_percent is None:
+                parsed.override_percent = 100.0
+                if "override_percent" not in parsed.entities_present:
+                    parsed.entities_present.append("override_percent")
+
+            if parsed.is_explicit_bulk and not parsed.reported_activity_code and len(parsed.activity_updates) <= 1:
                 parsed.intent = "BULK_PROGRESS_REPORT"
                 parsed.is_bulk = True
-                if parsed.override_percent is None:
-                    parsed.override_percent = 100.0
                 if not parsed.bulk_scope:
-                    parsed.bulk_scope = {"disciplines": discs, "raw_text": text}
-            elif discs:
-                parsed.discipline = discs[0]
-                parsed.intent = "BULK_PROGRESS_REPORT"
-                parsed.is_bulk = True
-                if parsed.override_percent is None:
-                    parsed.override_percent = 100.0
-                if not parsed.bulk_scope:
-                    parsed.bulk_scope = {"discipline": discs[0], "disciplines": discs, "raw_text": text}
+                    parsed.bulk_scope = {"discipline": discs[0] if discs else None, "disciplines": discs, "raw_text": text}
             else:
-                parsed.intent = "PROGRESS_REPORT"
-                if parsed.override_percent is None:
-                    parsed.override_percent = 100.0
+                parsed.is_bulk = False
+                if discs and not parsed.discipline:
+                    parsed.discipline = discs[0]
         elif is_comp and parsed.intent == "INFORMATION_QUERY":
             parsed.status_reported = "COMPLETED"
 

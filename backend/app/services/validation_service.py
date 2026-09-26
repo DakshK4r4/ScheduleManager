@@ -200,23 +200,43 @@ class ValidationService:
             succ = rel.get("successor_code")
             rel_type = (rel.get("relationship_type") or "FS").upper()
 
-            if not pred or pred not in activity_codes:
+            if not pred:
                 errors.append(
                     ValidationErrorDetail(
                         field=f"relationships[{idx}].predecessor_code",
-                        message=f"Relationship references non-existent predecessor activity '{pred}'.",
-                        code="MISSING_PREDECESSOR",
+                        message="Relationship missing predecessor activity code.",
+                        code="REQUIRED_PREDECESSOR",
+                        severity="ERROR",
+                    )
+                )
+            elif pred not in activity_codes:
+                errors.append(
+                    ValidationErrorDetail(
+                        field=f"relationships[{idx}].predecessor_code",
+                        message=f"Relationship references external/unresolved predecessor activity '{pred}'. Skipped during single-project import.",
+                        code="EXTERNAL_PREDECESSOR",
                         value=pred,
+                        severity="WARNING",
                     )
                 )
 
-            if not succ or succ not in activity_codes:
+            if not succ:
                 errors.append(
                     ValidationErrorDetail(
                         field=f"relationships[{idx}].successor_code",
-                        message=f"Relationship references non-existent successor activity '{succ}'.",
-                        code="MISSING_SUCCESSOR",
+                        message="Relationship missing successor activity code.",
+                        code="REQUIRED_SUCCESSOR",
+                        severity="ERROR",
+                    )
+                )
+            elif succ not in activity_codes:
+                errors.append(
+                    ValidationErrorDetail(
+                        field=f"relationships[{idx}].successor_code",
+                        message=f"Relationship references external/unresolved successor activity '{succ}'. Skipped during single-project import.",
+                        code="EXTERNAL_SUCCESSOR",
                         value=succ,
+                        severity="WARNING",
                     )
                 )
 

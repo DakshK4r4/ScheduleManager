@@ -19,7 +19,7 @@ class MatchingService:
         if not text:
             return set()
         clean = re.sub(r"[^\w\s-]", " ", text.lower())
-        tokens = {t.strip("-") for t in clean.split() if len(t.strip("-")) >= 2}
+        tokens = {t.strip("-") for t in clean.split() if len(t.strip("-")) >= 2 or t.strip("-").isdigit()}
         return tokens
 
     @classmethod
@@ -27,7 +27,7 @@ class MatchingService:
         """
         Calculates text alignment between event text (text_a) and activity name (text_b).
         Considers both token coverage (what fraction of activity name terms are mentioned)
-        and token set Jaccard similarity.
+        and token set Jaccard similarity. Supports numeric token equivalence (e.g. '1' == '01').
         """
         tokens_a = cls._tokenize(text_a)
         tokens_b = cls._tokenize(text_b)
@@ -37,7 +37,10 @@ class MatchingService:
         # Substring / stem-tolerant token coverage of activity name (text_b)
         matched_b = 0
         for tb in tokens_b:
-            if any(tb in ta or ta in tb for ta in tokens_a):
+            if any(
+                tb in ta or ta in tb or (tb.isdigit() and ta.isdigit() and int(tb) == int(ta))
+                for ta in tokens_a
+            ):
                 matched_b += 1
         coverage = matched_b / len(tokens_b) if tokens_b else 0.0
 
@@ -103,8 +106,30 @@ class MatchingService:
     def _extract_subject_tokens(cls, text: str) -> List[str]:
         if not text:
             return []
-        clean = re.sub(r"[^\w\s-]", " ", text.lower())
-        tokens = [t.strip("-") for t in clean.split() if t.strip("-") and t.strip("-") not in cls.CONVERSATIONAL_STOP_WORDS and not t.strip("-").isdigit()]
+        # Strip percentages (e.g. 75%, 98%)
+        cleaned = re.sub(r"\b\d+(?:\.\d+)?\s*%", " ", text.lower())
+        # Strip dates (e.g. 2024-09-30, 2024)
+        cleaned = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", cleaned)
+        cleaned = re.sub(r"\b(19\d\d|20\d\d)\b", " ", cleaned)
+        # Strip quantities with units (e.g. 35 m3, 10 tons)
+        cleaned = re.sub(
+            r"\b\d+(?:\.\d+)?\s*(cubic meters?|m3|cum|cu\.m|square meters?|m2|sqm|tonnes?|tons?|t|meters?|mtr|m|nos|ea)\b",
+            " ",
+            cleaned,
+        )
+        clean = re.sub(r"[^\w\s-]", " ", cleaned)
+        raw_tokens = [t.strip("-") for t in clean.split() if t.strip("-")]
+
+        tokens = []
+        for t in raw_tokens:
+            if t in cls.CONVERSATIONAL_STOP_WORDS:
+                continue
+            # Preserve numeric activity identifiers (e.g. 1, 01, 2, 02, 1001, 1002)
+            if t.isdigit():
+                if len(t) <= 5:
+                    tokens.append(t)
+            else:
+                tokens.append(t)
         return tokens
 
     @classmethod
@@ -152,7 +177,11 @@ class MatchingService:
             for st in subj_tokens:
                 if st in act_tokens:
                     matched_subj += 1
-                elif len(st) >= 3 and any(st in at or at in st for at in act_tokens):
+                elif st.isdigit() and any(at.isdigit() and int(at) == int(st) for at in act_tokens):
+                    matched_subj += 1
+                elif st.isdigit() and activity.activity_code and any(cd.isdigit() and int(cd) == int(st) for cd in re.findall(r"\d+", activity.activity_code)):
+                    matched_subj += 1
+                elif len(st) >= 3 and any(len(at) >= 3 and (st in at or at in st) for at in act_tokens):
                     matched_subj += 1
 
             query_coverage = matched_subj / len(subj_tokens)

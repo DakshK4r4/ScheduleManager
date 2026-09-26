@@ -223,6 +223,16 @@ export interface TimeAgentActionCard {
   reject_label?: string | null;
   review_label?: string | null;
   language?: string | null;
+  is_multi_activity?: boolean | null;
+  multi_proposals?: Array<{
+    activity_id: string;
+    activity_code: string;
+    activity_name: string;
+    proposed_percent: number;
+    proposed_status?: string | null;
+  }> | null;
+  resolution_session_id?: string | null;
+  is_resolution_question?: boolean | null;
 }
 
 export interface TimeAgentMessage {
@@ -273,6 +283,7 @@ export interface PendingAction {
     current_percent: number;
     proposed_percent: number;
   }> | null;
+  is_multi_activity?: boolean | null;
 }
 
 export interface TimeAgentConversation {

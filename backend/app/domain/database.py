@@ -11,9 +11,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     try:
         import psycopg2  # check if driver available
-        DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/primavera"
+        DATABASE_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/primavera"
     except ImportError:
         DATABASE_URL = "sqlite:///./primavera.db"
+elif DATABASE_URL.startswith("postgresql://"):
+    # SQLAlchemy 2.0 defaults postgresql:// to psycopg (v3). Normalize to psycopg2 if unspecified.
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 # SQLite test compatibility
 connect_args = {}

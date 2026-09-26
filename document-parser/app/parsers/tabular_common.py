@@ -83,8 +83,6 @@ def map_columns(headers: List[str]) -> Dict[str, str]:
 
     # Required field verification
     missing = []
-    if "activity_code" not in matched:
-        missing.append("Activity ID / Activity Code")
     if "name" not in matched:
         missing.append("Activity Name / Description")
 
@@ -94,15 +92,18 @@ def map_columns(headers: List[str]) -> Dict[str, str]:
             f"Unable to map required schedule columns from table headers. "
             f"Missing required columns: {', '.join(missing)}. "
             f"Columns found in file: [{found_cols}]. "
-            f"Supported aliases for Activity ID include: {', '.join(COLUMN_ALIASES['activity_code'][:5])}. "
             f"Supported aliases for Name include: {', '.join(COLUMN_ALIASES['name'][:5])}."
         )
+
+    # If activity_code is not present in headers, permit deterministic auto-generation
+    if "activity_code" not in matched:
+        matched["activity_code"] = "__AUTO_GENERATED__"
 
     return matched
 
 
 REL_PATTERN = re.compile(
-    r"^([A-Za-z0-9_\-\.]+?)(?:[\s\-_]*)(FS|SS|FF|SF)?(?:\s*([+\-]?\d+(?:\.\d+)?(?:d|h|w)?))?$",
+    r"^([A-Za-z0-9_\-\.]+?)(?:[\s\-_]*)(?:\(?\[?\s*(FS|SS|FF|SF)?\s*([+\-]?\d+(?:\.\d+)?(?:d|h|w)?)?\s*\)?\]?)?$",
     re.IGNORECASE,
 )
 
@@ -150,6 +151,31 @@ def parse_relationship_token(token: str, current_code: str, is_predecessor: bool
         )
 
 
+def generate_stable_activity_code(
+    name: str,
+    wbs_code: Optional[str] = None,
+    seen_codes: Optional[Dict[str, int]] = None,
+) -> str:
+    """
+    Generate a stable, deterministic activity code from task name and WBS.
+    Preserves identity continuity across repeated imports, reordered rows, and inserted rows.
+    """
+    import hashlib
+    slug = re.sub(r"[^A-Za-z0-9]+", "", name).upper()[:8]
+    if not slug:
+        slug = "TASK"
+    seed = f"{wbs_code or 'GEN'}:{name.strip().lower()}"
+    h = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:6].upper()
+    base_code = f"ACT-{slug}-{h}"
+
+    if seen_codes is not None:
+        count = seen_codes.get(base_code, 0)
+        seen_codes[base_code] = count + 1
+        if count > 0:
+            return f"{base_code}-{count+1}"
+    return base_code
+
+
 def build_canonical_schedule_from_rows(
     rows: List[Dict[str, str]],
     col_map: Dict[str, str],
@@ -161,14 +187,18 @@ def build_canonical_schedule_from_rows(
     canonical_wbs_map: Dict[str, CanonicalWBSNode] = {}
     canonical_relationships: List[CanonicalRelationship] = []
     seen_activities: Set[str] = set()
+    generated_code_counts: Dict[str, int] = {}
 
     for idx, row in enumerate(rows, start=2):  # row 1 is header
-        raw_code = row.get(col_map.get("activity_code", ""), "").strip()
-        if not raw_code:
-            continue
-
-        raw_name = row.get(col_map.get("name", ""), "").strip() or raw_code
+        raw_name = row.get(col_map.get("name", ""), "").strip() or f"Task-{idx-1}"
         raw_wbs = row.get(col_map.get("wbs_code", ""), "").strip() if "wbs_code" in col_map else None
+
+        if col_map.get("activity_code") == "__AUTO_GENERATED__":
+            raw_code = generate_stable_activity_code(raw_name, raw_wbs, generated_code_counts)
+        else:
+            raw_code = row.get(col_map.get("activity_code", ""), "").strip()
+            if not raw_code:
+                raw_code = generate_stable_activity_code(raw_name, raw_wbs, generated_code_counts)
 
         if raw_wbs and raw_wbs not in canonical_wbs_map:
             canonical_wbs_map[raw_wbs] = CanonicalWBSNode(

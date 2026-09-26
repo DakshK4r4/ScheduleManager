@@ -78,7 +78,7 @@ export default function ClarificationCard({
                 <div className="flex items-center gap-1.5 shrink-0 text-[11px] font-medium">
                   <span className="text-slate-500">{act.current_percent}%</span>
                   <ArrowRight className="h-3 w-3 text-slate-400" />
-                  <span className="text-emerald-700 font-semibold">{targetPct}%</span>
+                  <span className="text-emerald-700 font-semibold">{act.proposed_percent ?? targetPct}%</span>
                 </div>
               </div>
             ))}
@@ -113,7 +113,11 @@ export default function ClarificationCard({
                 ) : (
                   <>
                     <CheckCheck className="h-3.5 w-3.5" />
-                    <span>Update All {count} ({targetPct}%)</span>
+                    <span>
+                      {card.is_multi_activity
+                        ? card.confirm_label || `Confirm All Updates (${count})`
+                        : `Update All ${count} (${targetPct}%)`}
+                    </span>
                   </>
                 )}
               </button>
@@ -158,9 +162,16 @@ export default function ClarificationCard({
 
   return (
     <div className="rounded-xl border border-amber-200 bg-white p-3.5 space-y-2.5 shadow-xs">
-      <div className="flex items-center gap-2 text-xs font-semibold text-amber-700">
-        <HelpCircle className="h-4 w-4 shrink-0" />
-        <span>Clarification Required</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-semibold text-amber-700">
+          <HelpCircle className="h-4 w-4 shrink-0" />
+          <span>{card.is_resolution_question ? "Activity Identification" : "Clarification Required"}</span>
+        </div>
+        {card.is_resolution_question && (
+          <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-semibold">
+            Progressive Disambiguation
+          </span>
+        )}
       </div>
 
       {card.question && (

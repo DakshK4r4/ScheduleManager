@@ -176,6 +176,7 @@ export default function TimeAgentChat({
             (pendingActionCard.card.bulk_activities?.length ?? 0),
           target_percent: pendingActionCard.card.target_percent ?? 100,
           bulk_activities: pendingActionCard.card.bulk_activities,
+          is_multi_activity: Boolean(pendingActionCard.card.is_multi_activity),
         };
       }
       if (pendingActionCard.type === "PROPOSAL_CONFIRMATION") {
@@ -341,7 +342,7 @@ export default function TimeAgentChat({
 
   // Handle Voice Recording via Sarvam STT
   const handleVoiceAudioRecorded = async (audioBlob: Blob, signal?: AbortSignal) => {
-    if (!projectId || isChatLocked) return;
+    if (!projectId) return;
 
     let targetConvId = activeConversation?.conversation_id;
     if (!targetConvId) {
@@ -502,10 +503,7 @@ export default function TimeAgentChat({
   // Handle Send Text Message
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
-    if (!text.trim() || !activeConversation || sendingMessage || (isChatLocked && !textToSend)) {
-      if (isBulkConfirmationPending && !textToSend) {
-        setError("Please confirm or cancel the pending bulk update first.");
-      }
+    if (!text.trim() || !activeConversation || sendingMessage) {
       return;
     }
 
@@ -1224,7 +1222,15 @@ export default function TimeAgentChat({
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="text-xs text-amber-950 font-medium">
-                  Bulk update: <strong>{pendingBulkCount} activities</strong> to <strong>{pendingBulkTargetPct}%</strong>
+                  {currentPendingAction?.is_multi_activity || pendingActionCard?.card.is_multi_activity ? (
+                    <>
+                      Multi-activity update: <strong>{pendingBulkCount} activities</strong> (review proposed percentages above)
+                    </>
+                  ) : (
+                    <>
+                      Bulk update: <strong>{pendingBulkCount} activities</strong> to <strong>{pendingBulkTargetPct}%</strong>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                   <button
@@ -1241,7 +1247,11 @@ export default function TimeAgentChat({
                     ) : (
                       <>
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Confirm Update</span>
+                        <span>
+                          {currentPendingAction?.is_multi_activity || pendingActionCard?.card.is_multi_activity
+                            ? `Confirm All Updates (${pendingBulkCount})`
+                            : "Confirm Update"}
+                        </span>
                       </>
                     )}
                   </button>
@@ -1354,7 +1364,7 @@ export default function TimeAgentChat({
             {/* Voice Input Button (Sarvam STT) */}
             <VoiceInputButton
               onAudioRecorded={handleVoiceAudioRecorded}
-              disabled={isChatLocked || sendingMessage || loadingMessages}
+              disabled={sendingMessage || loadingMessages}
             />
 
             <input
@@ -1363,22 +1373,22 @@ export default function TimeAgentChat({
               onChange={(e) => setInputText(e.target.value)}
               placeholder={
                 isBulkConfirmationPending
-                  ? "Bulk update is waiting for your confirmation."
+                  ? "Reply 'confirm', 'cancel', ask a question, or specify revision..."
                   : hasPendingActionCard
                   ? (activeConversation?.language === "hi"
-                      ? "कृपया पहले ऊपर दिए गए प्रस्ताव पर निर्णय लें..."
+                      ? "पुष्टि करें, रद्द करें, प्रश्न पूछें या संशोधन लिखें..."
                       : activeConversation?.language === "hinglish"
-                      ? "Kripya pehle upar diye gaye proposal par decision lein..."
-                      : "Please make a decision on the pending proposal above...")
+                      ? "Confirm ya cancel karein, sawal puchein, ya revision likhein..."
+                      : "Confirm, cancel, ask a question, or type revision...")
                   : "Report progress (any language) or use voice...."
               }
-              disabled={isChatLocked || sendingMessage || loadingMessages}
+              disabled={sendingMessage || loadingMessages}
               className="flex-1 px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:bg-slate-50 disabled:cursor-not-allowed"
             />
 
             <button
               type="submit"
-              disabled={isChatLocked || !inputText.trim() || sendingMessage || loadingMessages}
+              disabled={!inputText.trim() || sendingMessage || loadingMessages}
               className="p-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all disabled:opacity-40 disabled:hover:bg-blue-600 disabled:cursor-not-allowed"
             >
               <Send className="h-4 w-4" />

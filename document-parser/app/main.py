@@ -61,6 +61,13 @@ def detect_parser(filename: str, content: bytes) -> BaseParser:
     elif b"," in header_preview or b"\t" in header_preview:
         return CsvParser()
 
+    # Explicit check for Microsoft Project .mpp binary format
+    if lower_name.endswith(".mpp") or (content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1") and b"MSProject" in content[:4096]):
+        raise ParserError(
+            f"Microsoft Project proprietary binary format (.mpp) is not supported for '{filename}'. "
+            "Please export your schedule from Microsoft Project as XML (.xml) or Excel (.xlsx) format and re-upload."
+        )
+
     raise ParserError(
         f"Unsupported or unrecognized schedule file format for '{filename}'. "
         "Supported extensions: .xer, .xml, .csv, .xlsx."
