@@ -34,13 +34,25 @@ export function getApiBase(): string {
   if (typeof window !== "undefined") {
     const envUrl = process.env.NEXT_PUBLIC_API_URL;
     if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
-      return envUrl;
+      return envUrl.replace(/\/+$/, "");
     }
     if (window.location.hostname && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      return `${window.location.protocol}//${window.location.hostname}:8080`;
+      return `${window.location.origin}/api/proxy`;
     }
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080").replace(/\/+$/, "");
+}
+
+export function buildFullUrl(path: string): URL {
+  const base = getApiBase();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  if (base.startsWith("http://") || base.startsWith("https://")) {
+    return new URL(`${base}${cleanPath}`);
+  }
+  if (typeof window !== "undefined") {
+    return new URL(`${base}${cleanPath}`, window.location.origin);
+  }
+  return new URL(`http://localhost:8080${cleanPath}`);
 }
 
 const API_BASE = {
@@ -307,7 +319,7 @@ export async function fetchAgentConversations(
   searchQuery?: string,
   userId: string = "site-supervisor"
 ): Promise<TimeAgentConversationSummary[]> {
-  const url = new URL(`${API_BASE}/api/v1/projects/${projectId}/agent/conversations`);
+  const url = buildFullUrl(`/api/v1/projects/${projectId}/agent/conversations`);
   if (searchQuery && searchQuery.trim()) {
     url.searchParams.set("q", searchQuery.trim());
   }

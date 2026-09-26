@@ -24,15 +24,18 @@ import EmptyState from "@/components/ui/EmptyState";
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
 
   const loadProjects = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchProjects();
       setProjects(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load projects:", err);
+      setError(err?.message || "Failed to load projects from backend API.");
     } finally {
       setLoading(false);
     }
@@ -145,7 +148,19 @@ export default function Dashboard() {
 
         {loading ? (
           <div className="rounded-lg border border-slate-200 bg-white p-12 text-center text-xs text-slate-400">
-            Loading schedules from PostgreSQL database...
+            <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent mb-2"></div>
+            <div>Loading schedules from PostgreSQL database...</div>
+          </div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50/50 p-8 text-center text-xs text-red-600 space-y-3">
+            <p className="font-semibold text-sm">Failed to connect to Primavera Schedule Management API</p>
+            <p className="text-slate-600 font-mono text-[11px] max-w-lg mx-auto">{error}</p>
+            <button
+              onClick={() => loadProjects()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition"
+            >
+              Retry Connection
+            </button>
           </div>
         ) : projects.length === 0 ? (
           <EmptyState
