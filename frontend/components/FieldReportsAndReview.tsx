@@ -518,7 +518,7 @@ export default function FieldReportsAndReview({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 underline"
                       >
-                        <ExternalLink className="h-3 w-3" /> View Original Evidence in MinIO
+                        <ExternalLink className="h-3 w-3" /> View Original Evidence
                       </a>
                     )}
                   </div>

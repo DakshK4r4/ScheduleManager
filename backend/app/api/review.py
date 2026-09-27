@@ -50,12 +50,13 @@ def get_review_queue(
 
     items: List[ReviewQueueItemDTO] = []
     for ev in events:
-        # Generate presigned URL for the source artifact
+        # Generate view URL for the source artifact
         view_url = None
-        try:
-            view_url = minio_service.get_presigned_view_url(ev.storage_key, expires_seconds=900)
-        except Exception as e:
-            logger.warning(f"Could not generate presigned URL for event {ev.id}: {e}")
+        if ev.storage_key:
+            try:
+                view_url = minio_service.get_presigned_view_url(ev.storage_key, expires_seconds=900)
+            except Exception as e:
+                logger.warning(f"Could not generate view URL for event {ev.id}: {e}")
 
         # Extract or recalculate candidates
         candidates: List[MatchCandidateDTO] = []

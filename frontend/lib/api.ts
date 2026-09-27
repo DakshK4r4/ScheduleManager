@@ -36,9 +36,14 @@ export function getApiBase(): string {
     if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
       return envUrl.replace(/\/+$/, "");
     }
-    if (window.location.hostname && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      return `${window.location.origin}/api/proxy`;
-    }
+      // When served behind Caddy reverse proxy on standard HTTP/HTTPS ports (80/443),
+      // use /api/proxy so requests route through Caddy without port 8080 leaks or route collision.
+      if (window.location.port !== "3000") {
+        return `${window.location.origin}/api/proxy`;
+      }
+      if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        return `${window.location.origin}/api/proxy`;
+      }
   }
   return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080").replace(/\/+$/, "");
 }

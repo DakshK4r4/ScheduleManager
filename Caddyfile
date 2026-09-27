@@ -1,0 +1,100 @@
+{
+    admin off
+}
+
+# Production Caddy configuration
+# When DOMAIN_NAME is set to a public domain (e.g. schedule.example.com), Caddy automatically
+# provisions Let's Encrypt / ZeroSSL TLS certificates and redirects HTTP (port 80) to HTTPS (port 443).
+# When DOMAIN_NAME is not set, it defaults to :80 for local testing and internal reverse proxying.
+{$DOMAIN_NAME::80} {
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+
+    # Public Ingress Access Barrier: HTTP Basic Authentication
+    # Protects frontend UI, backend APIs, project mutations, and artifact endpoints.
+    basic_auth {
+        {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+    }
+
+    # Request body size limit: 100MB for engineering schedules (XER, XML, XLSX) and field artifacts (PDF, audio)
+    request_body {
+        max_size 100MB
+    }
+
+    # Handle Next.js API proxy path: strip /api/proxy and reverse proxy directly to backend
+    handle_path /api/proxy/* {
+        reverse_proxy backend:8000 {
+            transport http {
+                response_header_timeout 300s
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    # Direct backend API routes: health, documentation, core APIs
+    @backend_routes {
+        path /api/*
+        path /health*
+        path /docs*
+        path /openapi.json*
+        path /redoc*
+        path /activities*
+        path /relationships*
+        path /wbs*
+        path /projects/import*
+    }
+
+    # Direct project list (GET /projects) or mutations (POST/PATCH/DELETE) on /projects/*
+    @backend_project_direct {
+        path /projects
+        path /projects/
+    }
+    @backend_project_mutations {
+        method POST PATCH DELETE
+        path /projects/*
+    }
+
+    handle @backend_routes {
+        reverse_proxy backend:8000 {
+            transport http {
+                response_header_timeout 300s
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    handle @backend_project_direct {
+        reverse_proxy backend:8000 {
+            transport http {
+                response_header_timeout 300s
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    handle @backend_project_mutations {
+        reverse_proxy backend:8000 {
+            transport http {
+                response_header_timeout 300s
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    # Frontend routes: all remaining traffic routed to Next.js SSR / standalone server
+    handle {
+        reverse_proxy frontend:3000 {
+            transport http {
+                response_header_timeout 60s
+                read_timeout 60s
+            }
+        }
+    }
+}

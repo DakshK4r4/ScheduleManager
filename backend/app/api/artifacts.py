@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import urllib.parse
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
@@ -180,6 +182,68 @@ def list_project_artifacts(project_id: str, db: Session = Depends(get_db)):
     ]
 
 
+def _resolve_media_type(key: str) -> str:
+    ext = os.path.splitext(key)[1].lower()
+    mapping = {
+        ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".csv": "text/csv; charset=utf-8",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".ogg": "audio/ogg",
+        ".webm": "audio/webm",
+        ".json": "application/json",
+        ".txt": "text/plain; charset=utf-8",
+        ".xml": "application/xml",
+    }
+    return mapping.get(ext, "application/octet-stream")
+
+
+@router.get("/api/v1/artifacts/download")
+def download_artifact(key: str = Query(...)):
+    """
+    Direct artifact binary download/view endpoint.
+    Streams object bytes from MinIO/storage to client with proper Content-Type
+    and inline Content-Disposition so external browsers can render or download
+    artifacts without direct access to the internal storage network.
+    """
+    try:
+        # Resolve data across raw or unquoted storage key
+        data = None
+        resolved_key = key
+        for candidate in [key, urllib.parse.unquote(key)]:
+            try:
+                data = minio_service.get_artifact_bytes(candidate)
+                resolved_key = candidate
+                break
+            except Exception:
+                continue
+
+        if data is None:
+            data = minio_service.get_artifact_bytes(key)
+
+        media_type = _resolve_media_type(resolved_key)
+        filename = os.path.basename(resolved_key) or "artifact"
+        headers = {
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=3600",
+        }
+        return Response(content=data, media_type=media_type, headers=headers)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Artifact not found: {e}",
+        )
+
+
 @router.get(
     "/api/v1/artifacts/{artifact_id}",
     response_model=ArtifactDTO,
@@ -233,20 +297,6 @@ def get_artifact_view_url(artifact_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate presigned URL: {e}",
-        )
-
-
-@router.get("/api/v1/artifacts/download")
-def download_artifact(key: str = Query(...)):
-    """Direct artifact binary download/view endpoint (used for local fallback or direct stream)."""
-    try:
-        data = minio_service.get_artifact_bytes(key)
-        media_type = "application/pdf" if key.endswith(".pdf") else "application/octet-stream"
-        return Response(content=data, media_type=media_type)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact not found: {e}",
         )
 
 

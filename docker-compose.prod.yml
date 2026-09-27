@@ -1,0 +1,150 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: primavera-caddy-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-:80}
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER:?BASIC_AUTH_USER must be set}
+      - BASIC_AUTH_HASH=${BASIC_AUTH_HASH:?BASIC_AUTH_HASH must be set}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - p6-prod-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: primavera-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - p6-prod-network
+
+  document-parser:
+    build:
+      context: ./document-parser
+      dockerfile: Dockerfile
+    container_name: primavera-document-parser-prod
+    restart: unless-stopped
+    environment:
+      - PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - p6-prod-network
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: primavera-minio-prod
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    volumes:
+      - minio_prod_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - p6-prod-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: primavera-backend-prod
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PARSER_URL=http://document-parser:8001
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET:-sih-artifacts}
+      - MINIO_SECURE=false
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - TIME_AGENT_GEMINI_API_KEY=${TIME_AGENT_GEMINI_API_KEY:-}
+      - TIME_AGENT_LLM_MODEL=${TIME_AGENT_LLM_MODEL:-gemini-2.5-flash}
+      - EXTRACTION_GEMINI_API_KEY=${EXTRACTION_GEMINI_API_KEY:-}
+      - EXTRACTION_LLM_MODEL=${EXTRACTION_LLM_MODEL:-gemini-3.5-flash}
+      - ALLOW_LEGACY_GEMINI_FALLBACK=${ALLOW_LEGACY_GEMINI_FALLBACK:-false}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gemini-3.5-flash}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      document-parser:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - p6-prod-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    container_name: primavera-frontend-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - BACKEND_INTERNAL_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=""
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - p6-prod-network
+
+networks:
+  p6-prod-network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  minio_prod_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

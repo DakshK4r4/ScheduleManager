@@ -155,8 +155,57 @@ def test_artifact_presigned_url(client: TestClient, db_session: Session):
 
     res = client.get(f"/api/v1/artifacts/{art_id}/view-url")
     assert res.status_code == 200
-    assert "url" in res.json()
-    assert res.json()["expires_in_seconds"] == 900
+    res_data = res.json()
+    assert "url" in res_data
+    assert res_data["expires_in_seconds"] == 900
+    view_url = res_data["url"]
+
+    # Security requirement: No internal MinIO host/port exposed to browser
+    assert "minio:9000" not in view_url
+    assert "localhost:9000" not in view_url
+    assert view_url.startswith("/api/v1/artifacts/download?key=")
+
+    # Test downloading through backend streaming endpoint
+    dl_res = client.get(view_url)
+    assert dl_res.status_code == 200
+    assert dl_res.content == SAMPLE_PDF_BYTES
+    assert "application/pdf" in dl_res.headers.get("content-type", "")
+    assert "inline" in dl_res.headers.get("content-disposition", "")
+
+
+def test_artifact_download_media_types_and_encoding(client: TestClient, db_session: Session):
+    proj, _, _ = create_test_project_and_activities(db_session)
+
+    # 1. XLSX artifact
+    xlsx_bytes = b"PK\x03\x04test_xlsx_content"
+    xlsx_files = {"file": ("schedule_update.xlsx", xlsx_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    up_xlsx = client.post(f"/api/v1/projects/{proj.id}/artifacts/upload", files=xlsx_files).json()
+    xlsx_view = client.get(f"/api/v1/artifacts/{up_xlsx['artifact']['artifact_id']}/view-url").json()["url"]
+    assert "minio:9000" not in xlsx_view
+    dl_xlsx = client.get(xlsx_view)
+    assert dl_xlsx.status_code == 200
+    assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in dl_xlsx.headers.get("content-type", "")
+    assert "schedule_update.xlsx" in dl_xlsx.headers.get("content-disposition", "")
+
+    # 2. Audio artifact
+    audio_bytes = b"test_audio_m4a_data"
+    audio_files = {"file": ("foreman_note.m4a", audio_bytes, "audio/mp4")}
+    up_audio = client.post(f"/api/v1/projects/{proj.id}/artifacts/upload", files=audio_files).json()
+    audio_view = client.get(f"/api/v1/artifacts/{up_audio['artifact']['artifact_id']}/view-url").json()["url"]
+    assert "minio:9000" not in audio_view
+    dl_audio = client.get(audio_view)
+    assert dl_audio.status_code == 200
+    assert "audio/mp4" in dl_audio.headers.get("content-type", "")
+
+    # 3. CSV artifact
+    csv_bytes = b"Activity,Status\nA100,Complete\n"
+    csv_files = {"file": ("report_data.csv", csv_bytes, "text/csv")}
+    up_csv = client.post(f"/api/v1/projects/{proj.id}/artifacts/upload", files=csv_files).json()
+    csv_view = client.get(f"/api/v1/artifacts/{up_csv['artifact']['artifact_id']}/view-url").json()["url"]
+    assert "minio:9000" not in csv_view
+    dl_csv = client.get(csv_view)
+    assert dl_csv.status_code == 200
+    assert "text/csv" in dl_csv.headers.get("content-type", "")
 
 
 # -------------------------------------------------------------

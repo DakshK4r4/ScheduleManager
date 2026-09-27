@@ -5,8 +5,10 @@ import io
 import logging
 import os
 import re
+import urllib.parse
 from datetime import timedelta
 from typing import Optional
+from minio import Minio
 
 logger = logging.getLogger("minio_service")
 
@@ -29,11 +31,11 @@ class MinioStorageService:
         if self._client is None:
             try:
                 import urllib3
-                from minio import Minio
-                # Use zero-retry, fast 100ms connect timeout so offline probe never hangs tests
+                conn_timeout = float(os.getenv("MINIO_CONNECT_TIMEOUT", "0.2" if os.getenv("TESTING") else "2.0"))
+                read_timeout = float(os.getenv("MINIO_READ_TIMEOUT", "0.5" if os.getenv("TESTING") else "30.0"))
                 http_client = urllib3.PoolManager(
-                    timeout=urllib3.util.Timeout(connect=0.1, read=0.3),
-                    retries=urllib3.util.Retry(total=0, connect=0, read=0),
+                    timeout=urllib3.util.Timeout(connect=conn_timeout, read=read_timeout),
+                    retries=urllib3.util.Retry(total=1, connect=1, read=0),
                 )
                 client = Minio(
                     self.endpoint,
@@ -138,7 +140,12 @@ class MinioStorageService:
                     response.close()
                     response.release_conn()
         else:
-            full_path = os.path.join(self.fallback_dir, self.bucket, object_key)
+            # Prevent directory traversal in local fallback
+            clean_key = os.path.normpath(object_key).lstrip("\\/")
+            full_path = os.path.join(self.fallback_dir, self.bucket, clean_key)
+            real_fallback = os.path.realpath(self.fallback_dir)
+            if not os.path.realpath(full_path).startswith(real_fallback):
+                raise PermissionError("Access denied: invalid storage path")
             if not os.path.exists(full_path):
                 raise FileNotFoundError(f"Artifact object not found at {object_key}")
             with open(full_path, "rb") as f:
@@ -146,7 +153,19 @@ class MinioStorageService:
 
     def get_presigned_view_url(self, object_key: str, expires_seconds: int = 900) -> str:
         """
-        Generate a temporary presigned URL for viewing/downloading the artifact.
+        Generate an external browser-accessible URL for viewing/downloading the artifact.
+
+        Always returns the backend streaming endpoint (/api/v1/artifacts/download?key=...)
+        rather than exposing the internal Docker hostname (e.g. minio:9000) or requiring
+        direct public network exposure of the object storage service.
+        """
+        encoded_key = urllib.parse.quote(object_key, safe="")
+        return f"/api/v1/artifacts/download?key={encoded_key}"
+
+    def get_s3_presigned_url(self, object_key: str, expires_seconds: int = 900) -> str:
+        """
+        Generate a direct S3 presigned URL from the S3/MinIO client (for public S3 buckets).
+        Falls back to get_presigned_view_url if MinIO is not connected.
         """
         if self.is_minio_connected():
             client = self._get_client()
@@ -155,9 +174,7 @@ class MinioStorageService:
                 object_name=object_key,
                 expires=timedelta(seconds=expires_seconds),
             )
-        else:
-            # Return direct API route for local viewing
-            return f"/api/v1/artifacts/download?key={object_key}"
+        return self.get_presigned_view_url(object_key, expires_seconds=expires_seconds)
 
 
 # Global singleton instance
