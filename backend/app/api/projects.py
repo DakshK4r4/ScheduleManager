@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.project import ProjectDataDateUpdate, ProjectResponse, ProjectUpdate
@@ -21,18 +22,26 @@ def list_projects(db: Session = Depends(get_db)):
 
 @router.get("/{project_id}", response_model=ProjectResponse, summary="Get project by ID")
 def get_project(project_id: str, db: Session = Depends(get_db)):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    try:
+        proj = ProjectRepository.get_by_id(db, clean_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error querying project: {str(e)}",
+        )
     if not proj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project '{project_id}' not found.",
+            detail=f"Project '{clean_id}' not found.",
         )
     return proj
 
 
 @router.get("/{project_id}/schedule-health", summary="Evaluate DCMA 14-point schedule health and quality metrics")
 def get_schedule_health(project_id: str, db: Session = Depends(get_db)):
-    result = ScheduleHealthService.evaluate_project_health(db=db, project_id=project_id)
+    clean_id = validate_project_id(project_id)
+    result = ScheduleHealthService.evaluate_project_health(db=db, project_id=clean_id)
     if "error" in result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -61,11 +70,12 @@ def simulate_project_scenario(
     payload: ScenarioSimulationPayload,
     db: Session = Depends(get_db),
 ):
-    project = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    project = ProjectRepository.get_by_id(db, clean_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project '{project_id}' not found.",
+            detail=f"Project '{clean_id}' not found.",
         )
     return ScenarioSimulationService.simulate_scenario(
         db=db,
@@ -80,12 +90,13 @@ def update_project(
     payload: ProjectUpdate,
     db: Session = Depends(get_db),
 ):
+    clean_id = validate_project_id(project_id)
     updates = payload.model_dump(exclude_unset=True)
-    updated = ProjectRepository.update(db, project_id, updates)
+    updated = ProjectRepository.update(db, clean_id, updates)
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project '{project_id}' not found.",
+            detail=f"Project '{clean_id}' not found.",
         )
     return updated
 
@@ -96,11 +107,12 @@ def update_project_data_date(
     payload: ProjectDataDateUpdate,
     db: Session = Depends(get_db),
 ):
-    updated = ProjectRepository.update(db, project_id, {"data_date": payload.data_date})
+    clean_id = validate_project_id(project_id)
+    updated = ProjectRepository.update(db, clean_id, {"data_date": payload.data_date})
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project '{project_id}' not found.",
+            detail=f"Project '{clean_id}' not found.",
         )
     return updated
 
@@ -129,10 +141,11 @@ async def import_schedule(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete project")
 def delete_project(project_id: str, db: Session = Depends(get_db)):
-    deleted = ProjectRepository.delete(db, project_id)
+    clean_id = validate_project_id(project_id)
+    deleted = ProjectRepository.delete(db, clean_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project '{project_id}' not found.",
+            detail=f"Project '{clean_id}' not found.",
         )
     return None

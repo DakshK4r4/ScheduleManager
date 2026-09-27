@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.institutional_memory import (
@@ -28,11 +29,12 @@ router = APIRouter(tags=["Institutional Memory"])
 
 
 def _verify_project(db: Session, project_id: str):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    proj = ProjectRepository.get_by_id(db, clean_id)
     if not proj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found.",
+            detail=f"Project {clean_id} not found.",
         )
     return proj
 

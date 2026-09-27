@@ -30,6 +30,7 @@ import {
   fetchReviewQueue,
   fetchProjectArtifacts,
   fetchAuditTrail,
+  isValidProjectId,
 } from "@/lib/api";
 import { Activity, Project, CPMResult, ScheduleHealthResult, Artifact, AuditLogItem } from "@/lib/types";
 import ActivityTable from "@/components/ActivityTable";
@@ -47,14 +48,28 @@ import EmptyState from "@/components/ui/EmptyState";
 
 type ActiveTab = "overview" | "activities" | "wbs" | "gantt" | "reports" | "agent" | "memory";
 
+type ProjectLoadingState =
+  | "INITIALIZING"
+  | "RESOLVING_PROJECT_ID"
+  | "LOADING_PROJECT"
+  | "PROJECT_READY"
+  | "PROJECT_NOT_FOUND"
+  | "PROJECT_LOAD_ERROR"
+  | "INVALID_PROJECT_ID";
+
 function ProjectWorkspaceContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectId = params.id as string;
 
+  // Authoritative canonical route identifier from URL segment
+  const rawId = params?.id;
+  const candidateId = Array.isArray(rawId) ? rawId[0] : (rawId as string | undefined);
+  const projectId = (candidateId || "") as string;
+
+  const [loadingState, setLoadingState] = useState<ProjectLoadingState>("INITIALIZING");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
 
   // CPM & Schedule Health Data
@@ -91,72 +106,122 @@ function ProjectWorkspaceContent() {
     }
   }, [searchParams]);
 
-  const loadProjectData = async () => {
-    try {
-      const proj = await fetchProject(projectId);
-      setProject(proj);
-
-      // Load activities to compute breakdown
-      const acts = await fetchActivities(projectId, { page_size: 1000 });
-      let ns = 0,
-        ip = 0,
-        comp = 0,
-        totalPct = 0;
-      acts.items.forEach((a) => {
-        if (a.status === "COMPLETED") comp++;
-        else if (a.status === "IN_PROGRESS") ip++;
-        else ns++;
-        totalPct += a.percent_complete || 0;
-      });
-
-      const avg = acts.items.length > 0 ? Math.round(totalPct / acts.items.length) : 0;
-      setStatusCounts({
-        notStarted: ns,
-        inProgress: ip,
-        completed: comp,
-        avgPercent: avg,
-      });
-
-      // Load real CPM schedule health
-      setCpmLoading(true);
-      try {
-        const [cpm, health] = await Promise.all([
-          fetchProjectCPM(projectId),
-          fetchScheduleHealth(projectId).catch(() => null),
-        ]);
-        setCpmData(cpm);
-        if (health) setHealthData(health);
-      } catch (cpmErr) {
-        console.warn("CPM calculation note:", cpmErr);
-      } finally {
-        setCpmLoading(false);
-      }
-
-      // Load execution telemetry
-      try {
-        const [qRes, artRes, auditRes] = await Promise.all([
-          fetchReviewQueue(projectId),
-          fetchProjectArtifacts(projectId),
-          fetchAuditTrail(projectId),
-        ]);
-        setPendingReviewCount(qRes.pending_count || 0);
-        setRecentArtifacts(artRes.slice(0, 5));
-        setRecentAudits(auditRes.audit_trail ? auditRes.audit_trail.slice(0, 5) : []);
-      } catch (telemetryErr) {
-        console.warn("Execution telemetry note:", telemetryErr);
-      }
-    } catch (err) {
-      console.error("Failed to load project details:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Authoritative project data loading with lifecycle and cancellation
   useEffect(() => {
-    if (projectId) {
-      loadProjectData();
+    // 1. Resolve project ID from URL parameter
+    if (!candidateId) {
+      setLoadingState("RESOLVING_PROJECT_ID");
+      return;
     }
-  }, [projectId, refreshCounter]);
+
+    // 2. Validate canonical project ID
+    if (!isValidProjectId(candidateId)) {
+      setLoadingState("INVALID_PROJECT_ID");
+      setErrorMessage(`The project identifier "${candidateId}" is invalid or malformed.`);
+      setProject(null);
+      return;
+    }
+
+    // 3. Initiate loading with AbortController for race condition & StrictMode protection
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    setLoadingState("LOADING_PROJECT");
+    setErrorMessage(null);
+    setProject(null);
+
+    async function loadData() {
+      try {
+        const proj = await fetchProject(candidateId!, { signal: abortController.signal });
+        if (!isMounted) return;
+
+        setProject(proj);
+        setLoadingState("PROJECT_READY");
+
+        // Load activities to compute breakdown (non-blocking)
+        try {
+          const acts = await fetchActivities(candidateId!, { page_size: 1000 }, { signal: abortController.signal });
+          if (isMounted) {
+            let ns = 0,
+              ip = 0,
+              comp = 0,
+              totalPct = 0;
+            acts.items.forEach((a) => {
+              if (a.status === "COMPLETED") comp++;
+              else if (a.status === "IN_PROGRESS") ip++;
+              else ns++;
+              totalPct += a.percent_complete || 0;
+            });
+
+            const avg = acts.items.length > 0 ? Math.round(totalPct / acts.items.length) : 0;
+            setStatusCounts({
+              notStarted: ns,
+              inProgress: ip,
+              completed: comp,
+              avgPercent: avg,
+            });
+          }
+        } catch (actErr: any) {
+          if (actErr?.name !== "AbortError") console.warn("Activity metrics warning:", actErr);
+        }
+
+        // Load CPM schedule health (non-blocking)
+        try {
+          setCpmLoading(true);
+          const [cpm, health] = await Promise.all([
+            fetchProjectCPM(candidateId!, { signal: abortController.signal }),
+            fetchScheduleHealth(candidateId!, { signal: abortController.signal }).catch(() => null),
+          ]);
+          if (isMounted) {
+            setCpmData(cpm);
+            if (health) setHealthData(health);
+          }
+        } catch (cpmErr: any) {
+          if (cpmErr?.name !== "AbortError") console.warn("CPM calculation warning:", cpmErr);
+        } finally {
+          if (isMounted) setCpmLoading(false);
+        }
+
+        // Load execution telemetry (non-blocking)
+        try {
+          const [qRes, artRes, auditRes] = await Promise.all([
+            fetchReviewQueue(candidateId!, { signal: abortController.signal }),
+            fetchProjectArtifacts(candidateId!, { signal: abortController.signal }),
+            fetchAuditTrail(candidateId!, { signal: abortController.signal }),
+          ]);
+          if (isMounted) {
+            setPendingReviewCount(qRes.pending_count || 0);
+            setRecentArtifacts(artRes.slice(0, 5));
+            setRecentAudits(auditRes.audit_trail ? auditRes.audit_trail.slice(0, 5) : []);
+          }
+        } catch (telemetryErr: any) {
+          if (telemetryErr?.name !== "AbortError") console.warn("Execution telemetry warning:", telemetryErr);
+        }
+      } catch (err: any) {
+        if (err?.name === "AbortError" || !isMounted) return;
+        console.error("Failed to load project details:", err);
+        if (err?.status === 404) {
+          setLoadingState("PROJECT_NOT_FOUND");
+          setErrorMessage("The requested schedule project could not be located in PostgreSQL.");
+        } else if (err?.status === 400 || err?.status === 422) {
+          setLoadingState("INVALID_PROJECT_ID");
+          setErrorMessage(err?.message || `Invalid project identifier: "${candidateId}".`);
+        } else {
+          setLoadingState("PROJECT_LOAD_ERROR");
+          setErrorMessage(
+            err?.message || "Unable to connect to the schedule database service. Please check your network or retry."
+          );
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [candidateId, refreshCounter]);
 
   const handleEditActivity = (act: Activity) => {
     setEditingActivity(act);
@@ -182,26 +247,87 @@ function ProjectWorkspaceContent() {
     memory: "Institutional Memory",
   };
 
-  if (loading) {
+  if (
+    loadingState === "INITIALIZING" ||
+    loadingState === "RESOLVING_PROJECT_ID" ||
+    loadingState === "LOADING_PROJECT"
+  ) {
     return (
-      <div className="py-24 text-center text-xs text-slate-400">
-        Loading project workspace &amp; schedule telemetry...
+      <div className="py-24 text-center space-y-3">
+        <RefreshCw className="mx-auto h-8 w-8 text-blue-600 animate-spin" />
+        <h3 className="text-sm font-semibold text-slate-800">
+          {loadingState === "RESOLVING_PROJECT_ID"
+            ? "Resolving project identifier..."
+            : "Loading project workspace & schedule telemetry..."}
+        </h3>
+        <p className="text-xs text-slate-500">
+          Connecting to PostgreSQL and synchronizing schedule state...
+        </p>
       </div>
     );
   }
 
-  if (!project) {
+  if (loadingState === "INVALID_PROJECT_ID") {
     return (
-      <div className="rounded-lg border border-rose-200 bg-rose-50 p-8 text-center space-y-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center space-y-3 max-w-lg mx-auto my-12">
+        <AlertCircle className="mx-auto h-8 w-8 text-amber-600" />
+        <h3 className="text-base font-bold text-amber-900">Invalid Project Identifier</h3>
+        <p className="text-xs text-amber-700">
+          {errorMessage || "The project ID in the URL is invalid or malformed."}
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/"
+            className="inline-block rounded-md bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-500 shadow-xs"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadingState === "PROJECT_NOT_FOUND") {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 p-8 text-center space-y-3 max-w-lg mx-auto my-12">
         <AlertCircle className="mx-auto h-8 w-8 text-rose-600" />
         <h3 className="text-base font-bold text-rose-900">Project Not Found</h3>
         <p className="text-xs text-rose-700">The requested schedule project could not be located in PostgreSQL.</p>
-        <Link
-          href="/"
-          className="inline-block rounded-md bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-500"
-        >
-          Return to Dashboard
-        </Link>
+        <div className="pt-2">
+          <Link
+            href="/"
+            className="inline-block rounded-md bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-500 shadow-xs"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadingState === "PROJECT_LOAD_ERROR" || !project) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center space-y-3 max-w-lg mx-auto my-12">
+        <AlertCircle className="mx-auto h-8 w-8 text-slate-600" />
+        <h3 className="text-base font-bold text-slate-900">Unable to Load Project</h3>
+        <p className="text-xs text-slate-600">
+          {errorMessage || "A temporary database connection or network error occurred while loading this project."}
+        </p>
+        <div className="pt-2 flex items-center justify-center gap-3">
+          <button
+            onClick={() => setRefreshCounter((c) => c + 1)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 shadow-xs cursor-pointer"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry Connection
+          </button>
+          <Link
+            href="/"
+            className="inline-block rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
       </div>
     );
   }
@@ -227,7 +353,7 @@ function ProjectWorkspaceContent() {
       <ProjectCommandBar
         project={project}
         averageCompletion={statusCounts.avgPercent}
-        onProjectUpdated={loadProjectData}
+        onProjectUpdated={() => setRefreshCounter((c) => c + 1)}
       />
 
       {/* 3. Module Navigation Tabs */}

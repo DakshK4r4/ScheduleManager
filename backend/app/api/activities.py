@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.domain.models import Activity
 from app.repositories.activity_repo import ActivityRepository
@@ -46,13 +47,14 @@ def get_project_activities(
     page_size: int = Query(50, ge=1, le=1000, description="Items per page"),
     db: Session = Depends(get_db),
 ):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    proj = ProjectRepository.get_by_id(db, clean_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     items, total = ActivityRepository.filter_activities(
         db=db,
-        project_id=project_id,
+        project_id=clean_id,
         activity_code=activity_code,
         name=name,
         search=search,
@@ -271,7 +273,8 @@ def delete_activity(activity_id: str, db: Session = Depends(get_db)):
     summary="Calculate deterministic CPM schedule health metrics and critical path",
 )
 def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    proj = ProjectRepository.get_by_id(db, clean_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
@@ -279,9 +282,9 @@ def get_project_cpm(project_id: str, db: Session = Depends(get_db)):
     from app.services.cpm_engine import CPMEngine
 
     activities, _ = ActivityRepository.filter_activities(
-        db=db, project_id=project_id, page=1, page_size=5000
+        db=db, project_id=clean_id, page=1, page_size=5000
     )
-    relationships = RelationshipRepository.get_by_project(db, project_id)
+    relationships = RelationshipRepository.get_by_project(db, clean_id)
 
     act_dicts = [
         {

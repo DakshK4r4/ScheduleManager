@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Bell, AlertTriangle, AlertCircle, CheckCircle2, ChevronRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { fetchProjects, fetchReviewQueue, fetchProjectCPM } from "@/lib/api";
+import { fetchProjects, fetchReviewQueue, fetchProjectCPM, isValidProjectId } from "@/lib/api";
 
 export interface AttentionItem {
   id: string;
@@ -29,6 +29,7 @@ export default function AttentionCenter() {
       const collected: AttentionItem[] = [];
 
       for (const p of projects.slice(0, 3)) {
+        if (!p?.id || !isValidProjectId(p.id)) continue;
         try {
           const qRes = await fetchReviewQueue(p.id);
           if (qRes.pending_count > 0) {

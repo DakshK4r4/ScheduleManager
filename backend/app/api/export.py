@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.domain.models import (
     Activity,
@@ -26,9 +27,10 @@ def get_project_audit_trail(project_id: str, db: Session = Depends(get_db)):
     Retrieve immutable audit log records for a project, showing full end-to-end
     provenance from schedule update -> ExecutionEvent -> Artifact -> MinIO storage key.
     """
+    clean_id = validate_project_id(project_id)
     logs = (
         db.query(ScheduleAuditLog)
-        .filter(ScheduleAuditLog.project_id == project_id)
+        .filter(ScheduleAuditLog.project_id == clean_id)
         .order_by(ScheduleAuditLog.timestamp.desc())
         .all()
     )

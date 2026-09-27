@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.domain.models import ActivityRelationship
 from app.repositories.activity_repo import ActivityRepository
@@ -24,10 +25,11 @@ router = APIRouter(tags=["Relationships"])
     summary="Get all relationships for a project",
 )
 def get_project_relationships(project_id: str, db: Session = Depends(get_db)):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    proj = ProjectRepository.get_by_id(db, clean_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
-    return RelationshipRepository.get_by_project(db, project_id)
+    return RelationshipRepository.get_by_project(db, clean_id)
 
 
 @router.post(
@@ -41,7 +43,8 @@ def create_relationship(
     payload: RelationshipCreate,
     db: Session = Depends(get_db),
 ):
-    proj = ProjectRepository.get_by_id(db, project_id)
+    clean_id = validate_project_id(project_id)
+    proj = ProjectRepository.get_by_id(db, clean_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 

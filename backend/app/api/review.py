@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.domain.models import Activity, Artifact, ExecutionEvent, Project, ReviewDecision, ScheduleAuditLog
 from app.schemas.extraction import ExecutionEventDTO
@@ -36,10 +37,11 @@ def get_review_queue(
     Retrieve all pending ambiguous events for a project that require planner human review,
     complete with candidate matches and MinIO presigned evidence URLs.
     """
+    clean_id = validate_project_id(project_id)
     events = (
         db.query(ExecutionEvent)
         .filter(
-            ExecutionEvent.project_id == project_id,
+            ExecutionEvent.project_id == clean_id,
             ExecutionEvent.status.in_(["IN_REVIEW", "UNMATCHED"]),
         )
         .order_by(ExecutionEvent.created_at.desc())

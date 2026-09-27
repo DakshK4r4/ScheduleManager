@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.api.validation import validate_project_id
 from app.domain.database import get_db
 from app.domain.models import Artifact, ExecutionEvent, Project
 from app.schemas.artifact import ArtifactDTO, ArtifactUploadResponse, PresignedUrlResponse
@@ -151,9 +152,10 @@ async def upload_artifact(
 )
 def list_project_artifacts(project_id: str, db: Session = Depends(get_db)):
     """List all stored artifacts for a project."""
+    clean_id = validate_project_id(project_id)
     artifacts = (
         db.query(Artifact)
-        .filter(Artifact.project_id == project_id)
+        .filter(Artifact.project_id == clean_id)
         .order_by(Artifact.uploaded_at.desc())
         .all()
     )

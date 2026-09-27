@@ -90,20 +90,52 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export function isValidProjectId(id: unknown): id is string {
+  if (!id || typeof id !== "string") return false;
+  const trimmed = id.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === "undefined" ||
+    lower === "null" ||
+    lower === "none" ||
+    lower === "nan" ||
+    lower === "[object object]"
+  ) {
+    return false;
+  }
+  const idRegex = /^[0-9a-zA-Z\-_]{3,64}$/;
+  return idRegex.test(trimmed);
+}
+
 // -------------------------------------------------------------
 // Schedule Project & Activity APIs
 // -------------------------------------------------------------
-export async function fetchProjects(): Promise<Project[]> {
-  const res = await fetch(`${API_BASE}/projects`);
+export async function fetchProjects(options?: { signal?: AbortSignal }): Promise<Project[]> {
+  const res = await fetch(`${API_BASE}/projects`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<Project[]>(res);
 }
 
-export async function fetchProject(id: string): Promise<Project> {
-  const res = await fetch(`${API_BASE}/projects/${id}`);
+export async function fetchProject(id: string, options?: { signal?: AbortSignal }): Promise<Project> {
+  if (!isValidProjectId(id)) {
+    throw new ApiError(`Invalid project ID format: "${id}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${id}`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<Project>(res);
 }
 
 export async function updateProject(id: string, updates: Partial<Project>): Promise<Project> {
+  if (!isValidProjectId(id)) {
+    throw new ApiError(`Invalid project ID format: "${id}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/projects/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -113,6 +145,9 @@ export async function updateProject(id: string, updates: Partial<Project>): Prom
 }
 
 export async function updateProjectDataDate(id: string, dataDate: string | null): Promise<Project> {
+  if (!isValidProjectId(id)) {
+    throw new ApiError(`Invalid project ID format: "${id}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/projects/${id}/data-date`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -122,6 +157,9 @@ export async function updateProjectDataDate(id: string, dataDate: string | null)
 }
 
 export async function deleteProject(id: string): Promise<void> {
+  if (!isValidProjectId(id)) {
+    throw new ApiError(`Invalid project ID format: "${id}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete project");
 }
@@ -152,8 +190,12 @@ export async function fetchActivities(
     sort_by?: string;
     sort_desc?: boolean;
     sort_dir?: string;
-  }
+  },
+  options?: { signal?: AbortSignal }
 ): Promise<PaginatedResponse<Activity>> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
   const query = new URLSearchParams();
   if (params?.page) query.set("page", params.page.toString());
   if (params?.page_size) query.set("page_size", params.page_size.toString());
@@ -166,22 +208,42 @@ export async function fetchActivities(
   if (params?.sort_desc !== undefined) query.set("sort_desc", params.sort_desc.toString());
   if (params?.sort_dir) query.set("sort_dir", params.sort_dir);
 
-  const res = await fetch(`${API_BASE}/projects/${projectId}/activities?${query.toString()}`);
+  const res = await fetch(`${API_BASE}/projects/${projectId}/activities?${query.toString()}`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<PaginatedResponse<Activity>>(res);
 }
 
-export async function fetchProjectCPM(projectId: string): Promise<CPMResult> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/cpm`);
+export async function fetchProjectCPM(projectId: string, options?: { signal?: AbortSignal }): Promise<CPMResult> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${projectId}/cpm`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<CPMResult>(res);
 }
 
-export async function fetchScheduleHealth(projectId: string): Promise<ScheduleHealthResult> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/schedule-health`);
+export async function fetchScheduleHealth(projectId: string, options?: { signal?: AbortSignal }): Promise<ScheduleHealthResult> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${projectId}/schedule-health`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<ScheduleHealthResult>(res);
 }
 
-
 export async function createActivity(projectId: string, data: Partial<Activity>): Promise<Activity> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/projects/${projectId}/activities`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -204,22 +266,46 @@ export async function deleteActivity(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete activity");
 }
 
-export async function fetchProjectWbs(projectId: string): Promise<WBSNode[]> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/wbs`);
+export async function fetchProjectWbs(projectId: string, options?: { signal?: AbortSignal }): Promise<WBSNode[]> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${projectId}/wbs`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<WBSNode[]>(res);
 }
 
-export async function fetchProjectWbsTree(projectId: string): Promise<WBSTreeNode[]> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/wbs/tree`);
+export async function fetchProjectWbsTree(projectId: string, options?: { signal?: AbortSignal }): Promise<WBSTreeNode[]> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${projectId}/wbs/tree`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<WBSTreeNode[]>(res);
 }
 
-export async function fetchProjectRelationships(projectId: string): Promise<Relationship[]> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/relationships`);
+export async function fetchProjectRelationships(projectId: string, options?: { signal?: AbortSignal }): Promise<Relationship[]> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/projects/${projectId}/relationships`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<Relationship[]>(res);
 }
 
 export async function createRelationship(projectId: string, data: Partial<Relationship>): Promise<Relationship> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/projects/${projectId}/relationships`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -254,8 +340,15 @@ export async function uploadFieldArtifact(
   return handleResponse<{ artifact: Artifact; is_duplicate: boolean; message: string }>(res);
 }
 
-export async function fetchProjectArtifacts(projectId: string): Promise<Artifact[]> {
-  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/artifacts`);
+export async function fetchProjectArtifacts(projectId: string, options?: { signal?: AbortSignal }): Promise<Artifact[]> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/artifacts`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<Artifact[]>(res);
 }
 
@@ -273,6 +366,9 @@ export async function extractArtifact(
 }
 
 export async function evaluateMatching(projectId: string, eventIds?: string[]): Promise<any> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
   const res = await fetch(`${API_BASE}/api/v1/matching/evaluate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -281,8 +377,15 @@ export async function evaluateMatching(projectId: string, eventIds?: string[]): 
   return handleResponse<any>(res);
 }
 
-export async function fetchReviewQueue(projectId: string): Promise<{ project_id: string; pending_count: number; items: ReviewQueueItem[] }> {
-  const res = await fetch(`${API_BASE}/api/v1/review/queue?project_id=${projectId}`);
+export async function fetchReviewQueue(projectId: string, options?: { signal?: AbortSignal }): Promise<{ project_id: string; pending_count: number; items: ReviewQueueItem[] }> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/review/queue?project_id=${projectId}`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<{ project_id: string; pending_count: number; items: ReviewQueueItem[] }>(res);
 }
 
@@ -302,8 +405,15 @@ export async function submitReviewDecision(decision: {
   return handleResponse<any>(res);
 }
 
-export async function fetchAuditTrail(projectId: string): Promise<{ project_id: string; total_records: number; audit_trail: AuditLogItem[] }> {
-  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/audit-trail`);
+export async function fetchAuditTrail(projectId: string, options?: { signal?: AbortSignal }): Promise<{ project_id: string; total_records: number; audit_trail: AuditLogItem[] }> {
+  if (!isValidProjectId(projectId)) {
+    throw new ApiError(`Invalid project ID format: "${projectId}"`, 400);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/audit-trail`, {
+    signal: options?.signal,
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   return handleResponse<{ project_id: string; total_records: number; audit_trail: AuditLogItem[] }>(res);
 }
 
