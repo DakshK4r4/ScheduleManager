@@ -29,6 +29,7 @@ import {
   submitReviewDecision,
   fetchAuditTrail,
   getExportXerUrl,
+  getExportAuditTrailUrl,
 } from "@/lib/api";
 import { Artifact, ReviewQueueItem, AuditLogItem } from "@/lib/types";
 import StatusBadge from "./ui/StatusBadge";
@@ -736,6 +737,145 @@ export default function FieldReportsAndReview({
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 6. Immutable Audit Trail & Schedule Provenance Ledger */}
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <span>Immutable Schedule Audit Trail</span>
+                <span className="rounded-full bg-slate-100 text-slate-700 px-2 py-0.5 text-[10px] font-mono font-bold">
+                  {auditLogs.length} events
+                </span>
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                PostgreSQL ACID audit ledger with cryptographic SHA-256 provenance to artifacts and events
+              </p>
+            </div>
+          </div>
+          <a
+            href={getExportAuditTrailUrl(projectId)}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start sm:self-auto px-2.5 py-1 rounded bg-slate-50 hover:bg-slate-100 border border-slate-200"
+          >
+            <span>Raw JSON Ledger</span>
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+
+        {auditLogs.length === 0 ? (
+          <p className="text-xs text-slate-400 py-6 text-center">
+            No schedule modifications recorded yet. Confirmed updates from the Time Agent or Field Review queue will appear here.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-400 border-b border-slate-200">
+                <tr>
+                  <th className="px-3 py-2">Timestamp</th>
+                  <th className="px-3 py-2">Activity</th>
+                  <th className="px-3 py-2">Action</th>
+                  <th className="px-3 py-2">State Transition</th>
+                  <th className="px-3 py-2">Actor / User</th>
+                  <th className="px-3 py-2">Lineage &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                {auditLogs.map((log) => {
+                  let prevPercent: number | null = null;
+                  let newPercent: number | null = null;
+                  try {
+                    if (log.previous_state) {
+                      const p = JSON.parse(log.previous_state);
+                      if (typeof p.percent_complete === "number") prevPercent = p.percent_complete;
+                    }
+                    if (log.new_state) {
+                      const n = JSON.parse(log.new_state);
+                      if (typeof n.percent_complete === "number") newPercent = n.percent_complete;
+                    }
+                  } catch {}
+
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50/50">
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        {log.timestamp ? new Date(log.timestamp).toLocaleString() : "-"}
+                      </td>
+                      <td className="px-3 py-2 font-sans">
+                        <span className="font-bold text-slate-900 font-mono">
+                          {log.activity_code || log.activity_id}
+                        </span>
+                        {log.activity_name && (
+                          <div className="text-[10px] text-slate-500 truncate max-w-[180px]">
+                            {log.activity_name}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                            log.action?.includes("APPLY") || log.action === "PROGRESS_APPLIED"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : log.action?.includes("REJECT")
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}
+                        >
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {prevPercent !== null && newPercent !== null ? (
+                          <span className="font-bold text-slate-800">
+                            {prevPercent}% <span className="text-slate-400">→</span>{" "}
+                            <span className="text-emerald-700">{newPercent}%</span>
+                          </span>
+                        ) : log.new_state ? (
+                          <span className="text-slate-600 truncate max-w-xs block" title={log.new_state}>
+                            {log.new_state}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 font-sans">
+                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">
+                          {log.user_id || "system"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-sans">
+                        {log.execution_event?.verbatim_excerpt && (
+                          <div
+                            className="text-[10px] text-slate-700 italic max-w-xs truncate"
+                            title={log.execution_event.verbatim_excerpt}
+                          >
+                            &ldquo;{log.execution_event.verbatim_excerpt}&rdquo;
+                          </div>
+                        )}
+                        {log.artifact?.original_filename && (
+                          <div className="text-[10px] text-blue-600 font-mono mt-0.5 flex items-center gap-1">
+                            <span className="truncate max-w-[140px]">{log.artifact.original_filename}</span>
+                            {log.artifact.sha256 && (
+                              <span className="text-slate-400 font-mono text-[9px]">
+                                ({log.artifact.sha256.slice(0, 8)}...)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {!log.execution_event && !log.artifact && (
+                          <span className="text-slate-400 text-[10px]">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -426,6 +426,10 @@ export function getExportXerUrl(projectId: string): string {
   return `${API_BASE}/api/v1/projects/${projectId}/export/xer`;
 }
 
+export function getExportAuditTrailUrl(projectId: string): string {
+  return `${API_BASE}/api/v1/projects/${projectId}/audit-trail`;
+}
+
 // -------------------------------------------------------------
 // Time Agent APIs
 // -------------------------------------------------------------

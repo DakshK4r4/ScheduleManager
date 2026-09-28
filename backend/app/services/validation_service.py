@@ -144,9 +144,10 @@ class ValidationService:
                 errors.append(
                     ValidationErrorDetail(
                         field=f"activities[{idx}].wbs_code",
-                        message=f"Referenced WBS '{wbs_code}' does not exist in project WBS.",
+                        message=f"Referenced WBS '{wbs_code}' does not exist in project WBS. Auto-assigned to root WBS.",
                         code="INVALID_WBS_REFERENCE",
                         value=wbs_code,
+                        severity="WARNING",
                     )
                 )
 
@@ -182,9 +183,10 @@ class ValidationService:
                         errors.append(
                             ValidationErrorDetail(
                                 field=f"activities[{idx}].planned_finish",
-                                message=f"Planned finish date ({finish}) cannot precede planned start date ({start}) for activity '{code}'.",
+                                message=f"Planned finish date ({finish}) precedes planned start date ({start}) for activity '{code}'. Automatically adjusted.",
                                 code="FINISH_BEFORE_START",
                                 value=finish,
+                                severity="WARNING",
                             )
                         )
                 except Exception:
@@ -267,8 +269,9 @@ class ValidationService:
                 errors.append(
                     ValidationErrorDetail(
                         field=f"relationships[{idx}]",
-                        message=f"Duplicate relationship between '{pred}' and '{succ}' ({rel_type}).",
+                        message=f"Duplicate relationship between '{pred}' and '{succ}' ({rel_type}). Deduplicated during import.",
                         code="DUPLICATE_RELATIONSHIP",
+                        severity="WARNING",
                     )
                 )
             seen_edges.add(edge_key)

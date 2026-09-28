@@ -140,6 +140,13 @@ class ImportService:
                 act_code_to_id[act_code] = act_id
                 wbs_code = a.get("wbs_code")
                 wbs_id = wbs_code_to_id.get(wbs_code) if wbs_code else None
+                if not wbs_id and wbs_code_to_id:
+                    wbs_id = next(iter(wbs_code_to_id.values()))
+
+                p_start = parse_dt(a.get("planned_start"))
+                p_finish = parse_dt(a.get("planned_finish"))
+                if p_start and p_finish and p_finish < p_start:
+                    p_start, p_finish = p_finish, p_start
 
                 act_codes = a.get("activity_codes") or {}
                 activity = Activity(
@@ -150,8 +157,8 @@ class ImportService:
                     name=a.get("name") or act_code,
                     activity_type=a.get("activity_type") or "TT_Task",
                     status=(a.get("status") or "NOT_STARTED").upper(),
-                    planned_start=parse_dt(a.get("planned_start")),
-                    planned_finish=parse_dt(a.get("planned_finish")),
+                    planned_start=p_start,
+                    planned_finish=p_finish,
                     actual_start=parse_dt(a.get("actual_start")),
                     actual_finish=parse_dt(a.get("actual_finish")),
                     original_duration=a.get("original_duration"),
@@ -170,20 +177,27 @@ class ImportService:
 
             db.flush()
 
-            # Insert Relationships
+            # Insert Relationships (with deduplication to satisfy uq_relationship_pred_succ_type)
+            seen_rels = set()
             for r in canonical_data.get("relationships", []):
                 pred_code = r.get("predecessor_code")
                 succ_code = r.get("successor_code")
                 pred_id = act_code_to_id.get(pred_code)
                 succ_id = act_code_to_id.get(succ_code)
+                rel_type = (r.get("relationship_type") or "FS").upper()
 
-                if pred_id and succ_id:
+                if pred_id and succ_id and pred_id != succ_id:
+                    rel_key = (pred_id, succ_id, rel_type)
+                    if rel_key in seen_rels:
+                        continue
+                    seen_rels.add(rel_key)
+
                     rel = ActivityRelationship(
                         id=str(uuid.uuid4()),
                         project_id=proj_id,
                         predecessor_id=pred_id,
                         successor_id=succ_id,
-                        relationship_type=(r.get("relationship_type") or "FS").upper(),
+                        relationship_type=rel_type,
                         lag=float(r.get("lag") or 0.0),
                     )
                     db.add(rel)
