@@ -727,18 +727,19 @@ Return ONLY valid JSON matching this structure:
 USER MESSAGE:
 {text}
 """
-        models_to_try = [
-            m for m in [
-                res.model,
-                "gemini-3.6-flash",
-                "gemini-flash-latest",
-                "gemini-3.5-flash",
-            ] if m and m not in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash")
-        ]
+        alias_map = {
+            "gemini-3.5-flash": "gemini-1.5-flash",
+            "gemini-3.6-flash": "gemini-1.5-flash",
+            "gemini-3.5-flash-lite": "gemini-1.5-flash",
+            "gemini-2.5-flash": "gemini-1.5-flash",
+        }
+        mapped_model = alias_map.get(res.model, res.model)
+        models_to_try = [mapped_model, "gemini-1.5-flash", "gemini-2.0-flash"]
         unique_models = []
         for m in models_to_try:
-            if m and m not in unique_models:
-                unique_models.append(m)
+            actual_m = alias_map.get(m, m)
+            if actual_m and actual_m not in unique_models:
+                unique_models.append(actual_m)
 
         for model in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_api_key}"

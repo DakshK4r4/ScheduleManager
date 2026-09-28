@@ -416,8 +416,20 @@ FIELD REPORT TEXT:
         try:
             if gemini_api_key:
                 primary_model = extraction_cred.model
-                candidate_pool = [primary_model, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
-                models_to_try = [m for m in candidate_pool if m]
+                # Map non-existent or mock models directly to supported high-speed models
+                alias_map = {
+                    "gemini-3.5-flash": "gemini-1.5-flash",
+                    "gemini-3.6-flash": "gemini-1.5-flash",
+                    "gemini-3.5-flash-lite": "gemini-1.5-flash",
+                    "gemini-2.5-flash": "gemini-1.5-flash",
+                }
+                mapped_primary = alias_map.get(primary_model, primary_model)
+                candidate_pool = [mapped_primary, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+                models_to_try: List[str] = []
+                for m in candidate_pool:
+                    actual_m = alias_map.get(m, m)
+                    if actual_m and actual_m not in models_to_try:
+                        models_to_try.append(actual_m)
 
                 for model in models_to_try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -595,8 +607,19 @@ Return ONLY valid JSON with this exact structure:
 }}
 """
         primary_model = extraction_cred.model
-        candidate_pool = [primary_model, "gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.5-flash"]
-        models_to_try = [m for m in candidate_pool if m]
+        alias_map = {
+            "gemini-3.5-flash": "gemini-1.5-flash",
+            "gemini-3.6-flash": "gemini-1.5-flash",
+            "gemini-3.5-flash-lite": "gemini-1.5-flash",
+            "gemini-2.5-flash": "gemini-1.5-flash",
+        }
+        mapped_primary = alias_map.get(primary_model, primary_model)
+        candidate_pool = [mapped_primary, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        models_to_try: List[str] = []
+        for m in candidate_pool:
+            actual_m = alias_map.get(m, m)
+            if actual_m and actual_m not in models_to_try:
+                models_to_try.append(actual_m)
 
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
