@@ -693,16 +693,161 @@ class TimeAgentService:
                     reply_text = "Update cancelled. No changes were applied to the schedule."
                 return cls._save_and_return_agent_response(db, conv, reply_text, action_card=None)
 
+            # 1.2 Check if user is specifying a revision to the pending proposal (e.g. "update it to 50%", "change to 50%", "50%")
+            target_act = db.query(Activity).filter(Activity.id == pending_single_prop.matched_activity_id).first()
+            extracted_code = ConversationalParser.extract_activity_code(user_content)
+            is_unrelated_activity = bool(
+                extracted_code and target_act and extracted_code.strip().upper() != target_act.activity_code.strip().upper()
+            )
+
+            rev_match = None
+            revised_val = None
+            if not is_unrelated_activity:
+                rev_match = re.search(
+                    r"\b(?:(?:set\s+(?:progress\s+)?to\s+|to\s+|progress\s+to\s+|progress\s+)?(\d+(?:\.\d+)?)\s*(?:%|percent))\b",
+                    clean_user_txt,
+                    re.IGNORECASE,
+                )
+                if not rev_match:
+                    rev_match = re.search(r"\bto\s+(\d+(?:\.\d+)?)\b", clean_user_txt, re.IGNORECASE)
+                if not rev_match and any(w in clean_user_txt for w in ["%", "percent", "प्रतिशत", "फीसदी"]):
+                    rev_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:%|percent|प्रतिशत|फीसदी)", clean_user_txt, re.IGNORECASE)
+
+                if rev_match:
+                    revised_val = float(rev_match.group(1))
+                else:
+                    parsed_peek = ConversationalParser.parse_message(
+                        text=user_content,
+                        project_data_date=project.data_date,
+                        is_clarification_turn=True,
+                    )
+                    if parsed_peek.override_percent is not None:
+                        revised_val = parsed_peek.override_percent
+
+            if revised_val is not None:
+                # User wants to REVISE the pending proposal to a new percentage
+                revised_pct = max(0.0, min(100.0, round(revised_val, 2)))
+                if target_act:
+                    # Supersede previous proposal
+                    pending_single_prop.status = "REPLACED"
+
+                    existing_ev = None
+                    if pending_single_prop.event_id:
+                        existing_ev = db.query(ExecutionEvent).filter(ExecutionEvent.id == pending_single_prop.event_id).first()
+
+                    if not existing_ev:
+                        existing_ev = ExecutionEvent(
+                            id=f"ev-{uuid.uuid4().hex[:8]}",
+                            project_id=project.id,
+                            source_type="CONVERSATION",
+                            conversation_id=conv.id,
+                            message_id=user_msg.id,
+                            verbatim_excerpt=user_content,
+                            description=f"{target_act.name} {user_content}",
+                            reported_activity_code=target_act.activity_code,
+                            execution_date=project.data_date or datetime.now(timezone.utc).replace(tzinfo=None),
+                            status_reported="IN_PROGRESS" if revised_pct < 100.0 else "COMPLETED",
+                            status="DRAFT",
+                        )
+                        db.add(existing_ev)
+                        db.flush()
+                        conv.active_event_id = existing_ev.id
+                    else:
+                        existing_ev.status = "DRAFT"
+                        existing_ev.verbatim_excerpt = f"{existing_ev.verbatim_excerpt} | Revised: {user_content}"
+                        existing_ev.status_reported = "IN_PROGRESS" if revised_pct < 100.0 else "COMPLETED"
+
+                    # Stage the revised proposal
+                    new_proposal = cls.stage_proposal(
+                        db=db,
+                        conversation=conv,
+                        event=existing_ev,
+                        activity=target_act,
+                        proposed_percent=revised_pct,
+                        proposed_status="COMPLETED" if revised_pct == 100.0 else "IN_PROGRESS",
+                        quantity_semantics="INCREMENTAL",
+                        incremental_quantity=None,
+                        override_percent=revised_pct,
+                    )
+
+                    prev_pct = target_act.percent_complete or 0.0
+                    card = ActionCardDTO(
+                        type="PROPOSAL_CONFIRMATION",
+                        proposal_id=new_proposal.id,
+                        event_id=existing_ev.id,
+                        activity_id=target_act.id,
+                        activity_code=target_act.activity_code,
+                        activity_name=target_act.name,
+                        current_percent=prev_pct,
+                        proposed_percent=revised_pct,
+                        incremental_quantity=None,
+                        unit=existing_ev.unit,
+                        execution_date=existing_ev.execution_date.strftime("%Y-%m-%d") if existing_ev.execution_date else None,
+                    )
+
+                    # Mark prior proposal card in message history as REJECTED/SUPERSEDED
+                    prior_msgs = (
+                        db.query(ConversationMessage)
+                        .filter(ConversationMessage.conversation_id == conv.id, ConversationMessage.sender == "AGENT")
+                        .all()
+                    )
+                    for m in prior_msgs:
+                        if m.message_metadata:
+                            try:
+                                meta = json.loads(m.message_metadata) if isinstance(m.message_metadata, str) else m.message_metadata
+                                if meta.get("proposal_id") == pending_single_prop.id:
+                                    meta["proposal_status"] = "REJECTED"
+                                    m.message_metadata = json.dumps(meta)
+                            except Exception:
+                                pass
+
+                    db.commit()
+
+                    if resp_lang == "hi":
+                        reply_text = (
+                            f"मैंने {target_act.activity_code} ({target_act.name}) के लिए प्रस्तावित प्रगति अपडेट को "
+                            f"{revised_pct}% में संशोधित कर दिया है। कृपया लागू करने से पहले पुष्टि करें।"
+                        )
+                        card.confirm_label = "अपडेट की पुष्टि करें"
+                        card.reject_label = "रद्द करें"
+                        card.review_label = "समीक्षा करें"
+                    elif resp_lang == "hinglish":
+                        reply_text = (
+                            f"Maine {target_act.activity_code} ({target_act.name}) ke liye proposal ko "
+                            f"{revised_pct}% par revise kar diya hai. Please apply karne se pehle confirm karein."
+                        )
+                        card.confirm_label = "Update Confirm Karein"
+                        card.reject_label = "Reject Karein"
+                        card.review_label = "Details Review Karein"
+                    else:
+                        reply_text = (
+                            f"I have revised the proposed update for {target_act.activity_code} ({target_act.name}) "
+                            f"to {revised_pct}%. Please confirm before I apply it."
+                        )
+                        card.confirm_label = "Confirm Update"
+                        card.reject_label = "Reject"
+                        card.review_label = "Review Details & Audit Safety"
+
+                    return cls._save_and_return_agent_response(
+                        db=db,
+                        conv=conv,
+                        reply_text=reply_text,
+                        action_card=card,
+                    )
+
+            # 1.3 Strict confirmation phrases (MUST NOT match revision statements like 'update it to 50%')
             confirmation_phrases = [
-                "yes", "yes update it", "yes, update it", "update it", "confirm", "confirm update",
+                "yes", "yes update it", "yes, update it", "confirm", "confirm update",
                 "apply", "apply update", "proceed", "go ahead",
                 "haan", "ha", "theek hai", "kardo", "kar do", "update kardo", "update kar do",
                 "confirm kardo", "confirm update"
             ]
             is_single_confirm = (
-                any(clean_user_txt == c or clean_user_txt.startswith(c + " ") or clean_user_txt.startswith(c + ",") for c in confirmation_phrases)
-                or any(c in user_content for c in ["हाँ", "पुष्टि करें", "अपडेट करें"])
-                or user_upper == "CONFIRM"
+                user_upper == "CONFIRM"
+                or any(clean_user_txt == c for c in confirmation_phrases)
+                or any(clean_user_txt.startswith(c + " ") or clean_user_txt.startswith(c + ",") for c in ["yes", "confirm", "apply", "proceed", "haan", "ha", "theek hai"])
+                or clean_user_txt in ["update it", "please update it", "go ahead and update it"]
+                or any(c in user_content for c in ["हाँ", "पुष्टि करें"])
             )
             if is_single_confirm:
                 conf_resp = cls.confirm_proposal(
@@ -713,9 +858,6 @@ class TimeAgentService:
                     caller_id=caller_id,
                 )
                 return cls._save_and_return_agent_response(db, conv, conf_resp.message, action_card=None)
-
-            # If not confirm/cancel, allow INFORMATION_QUERY to be answered; other intents are blocked after parsing below.
-            pass
 
         # Case 1c: Active ActivityResolutionSession processing (Interactive Activity Disambiguation)
         if not pending_bulk_meta and not pending_single_prop and conv.active_event_id:
@@ -2484,6 +2626,18 @@ class TimeAgentService:
 
         # Check if activity reference is ambiguous via ActivityReferenceResolver
         cand_ref = parsed.activity_updates[0].activity_reference if (parsed.activity_updates and len(parsed.activity_updates) == 1) else parsed.reported_activity_code
+        pronoun_refs = ("it", "this", "that", "the activity", "activity", "is", "isko", "ise", "usse", "ye", "yeh")
+        if (not cand_ref or cand_ref.lower().strip() in pronoun_refs) and conv.active_activity_id and not ctx.get("activity_id"):
+            cand_act = db.query(Activity).filter(Activity.id == conv.active_activity_id).first()
+            if cand_act:
+                cand_ref = cand_act.activity_code
+                ctx["activity_id"] = cand_act.id
+                ctx["activity_code"] = cand_act.activity_code
+                ctx["activity_name"] = cand_act.name
+                ctx["status"] = "ACTIVITY_IDENTIFIED"
+        elif cand_ref and cand_ref.lower().strip() in pronoun_refs and not conv.active_activity_id:
+            cand_ref = None
+
         if cand_ref and project_acts and not ctx.get("activity_id"):
             res_ref = ActivityReferenceResolver.resolve(
                 project_id=project.id,
