@@ -215,10 +215,11 @@ export default function FieldReportsAndReview({
     (a) => a.extraction_status === "EXTRACTED" || a.extraction_status === "PROCESSED" || a.extraction_status === "COMPLETED"
   ).length;
   const reviewCount = queueItems.length;
+  const autoLinkedCount = auditLogs.filter((a) => a.action === "AUTO_LINK_PROGRESS").length;
   const appliedCount = auditLogs.filter(
-    (a) => a.action === "PROGRESS_APPLIED" || a.action === "SCHEDULE_UPDATE" || a.action?.includes("APPLY")
+    (a) => a.action === "PROGRESS_APPLIED" || a.action === "SCHEDULE_UPDATE"
   ).length;
-  const matchedCount = Math.max(0, extractedCount - reviewCount);
+  const matchedCount = autoLinkedCount > 0 ? autoLinkedCount : Math.max(0, extractedCount - reviewCount);
 
   const scrollToReview = () => {
     reviewQueueRef.current?.scrollIntoView({ behavior: "smooth" });
