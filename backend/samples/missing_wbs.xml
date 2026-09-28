@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<APM xmlns="http://xmlns.oracle.com/Primavera/P6/V19.12/API/BusinessObjects">
+    <Project>
+        <ObjectId>500</ObjectId>
+        <Id>ERR-WBS</Id>
+        <Name>Error WBS Project</Name>
+    </Project>
+    <WBS>
+        <ObjectId>601</ObjectId>
+        <Code>WBS-OK</Code>
+        <Name>Existing WBS</Name>
+    </WBS>
+    <Activity>
+        <ObjectId>701</ObjectId>
+        <Id>ACT-ERR-1</Id>
+        <Name>Orphan Activity</Name>
+        <WBSObjectId>9999</WBSObjectId> <!-- Non existent WBS object ID -->
+        <Status>Not Started</Status>
+    </Activity>
+</APM>

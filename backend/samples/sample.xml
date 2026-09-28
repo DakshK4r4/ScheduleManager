@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<APM xmlns="http://xmlns.oracle.com/Primavera/P6/V19.12/API/BusinessObjects">
+    <Project>
+        <ObjectId>1001</ObjectId>
+        <Id>METRO-EXP-01</Id>
+        <Name>Metro Rail Line 4 Extension</Name>
+        <PlannedStartDate>2024-01-15T08:00:00</PlannedStartDate>
+        <PlannedFinishDate>2024-12-20T17:00:00</PlannedFinishDate>
+        <DataDate>2024-04-01T08:00:00</DataDate>
+    </Project>
+    <WBS>
+        <ObjectId>2001</ObjectId>
+        <Code>WBS-1</Code>
+        <Name>Civil Infrastructure</Name>
+    </WBS>
+    <WBS>
+        <ObjectId>2002</ObjectId>
+        <Code>WBS-2</Code>
+        <Name>Track &amp; Systems</Name>
+    </WBS>
+    <Activity>
+        <ObjectId>3001</ObjectId>
+        <Id>TUN-101</Id>
+        <Name>Tunnel Boring Machine (TBM) Launch</Name>
+        <WBSObjectId>2001</WBSObjectId>
+        <Status>Completed</Status>
+        <PlannedStartDate>2024-01-15T08:00:00</PlannedStartDate>
+        <PlannedFinishDate>2024-02-28T17:00:00</PlannedFinishDate>
+        <PlannedDuration>352.0</PlannedDuration>
+        <PercentComplete>100.0</PercentComplete>
+    </Activity>
+    <Activity>
+        <ObjectId>3002</ObjectId>
+        <Id>TUN-102</Id>
+        <Name>Underground Station Excavation</Name>
+        <WBSObjectId>2001</WBSObjectId>
+        <Status>In Progress</Status>
+        <PlannedStartDate>2024-03-01T08:00:00</PlannedStartDate>
+        <PlannedFinishDate>2024-05-15T17:00:00</PlannedFinishDate>
+        <PlannedDuration>440.0</PlannedDuration>
+        <PercentComplete>45.0</PercentComplete>
+    </Activity>
+    <Activity>
+        <ObjectId>3003</ObjectId>
+        <Id>TRK-201</Id>
+        <Name>Ballast and Track Laying</Name>
+        <WBSObjectId>2002</WBSObjectId>
+        <Status>Not Started</Status>
+        <PlannedStartDate>2024-05-16T08:00:00</PlannedStartDate>
+        <PlannedFinishDate>2024-08-30T17:00:00</PlannedFinishDate>
+        <PlannedDuration>600.0</PlannedDuration>
+        <PercentComplete>0.0</PercentComplete>
+    </Activity>
+    <Relationship>
+        <ObjectId>4001</ObjectId>
+        <PredecessorActivityObjectId>3001</PredecessorActivityObjectId>
+        <SuccessorActivityObjectId>3002</SuccessorActivityObjectId>
+        <Type>Finish to Start</Type>
+        <Lag>0</Lag>
+    </Relationship>
+    <Relationship>
+        <ObjectId>4002</ObjectId>
+        <PredecessorActivityObjectId>3002</PredecessorActivityObjectId>
+        <SuccessorActivityObjectId>3003</SuccessorActivityObjectId>
+        <Type>Finish to Start</Type>
+        <Lag>0</Lag>
+    </Relationship>
+</APM>

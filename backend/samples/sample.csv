@@ -1,0 +1,9 @@
+Activity ID,Activity Name,WBS,Status,Start,Finish,Duration,% Complete,Predecessors
+ENG-101,Process Flow Diagram (PFD),Engineering,Completed,2024-01-01,2024-01-15,10,100,
+ENG-102,Piping & Instrumentation Diagram,Engineering,Completed,2024-01-16,2024-02-05,15,100,ENG-101FS
+CIV-201,Site Preparation & Grading,Civil,In Progress,2024-02-06,2024-02-28,17,60,ENG-102FS
+CIV-202,Foundation Concrete Pour,Civil,Not Started,2024-03-01,2024-03-20,15,0,CIV-201FS+2d
+STR-301,Steel Structure Erection,Structural,Not Started,2024-03-21,2024-04-15,18,0,CIV-202FS
+MEC-401,Equipment Installation,Mechanical,Not Started,2024-04-16,2024-05-10,18,0,STR-301FS
+ELE-501,Cable Tray & Wiring,Electrical,Not Started,2024-05-11,2024-06-05,19,0,MEC-401SS+5d
+COM-601,Pre-commissioning & Testing,Commissioning,Not Started,2024-06-06,2024-06-25,14,0,ELE-501FS
