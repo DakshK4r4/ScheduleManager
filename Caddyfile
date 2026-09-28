@@ -13,12 +13,6 @@
         level INFO
     }
 
-    # Public Ingress Access Barrier: HTTP Basic Authentication
-    # Protects frontend UI, backend APIs, project mutations, and artifact endpoints.
-    basic_auth {
-        {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
-    }
-
     # Request body size limit: 100MB for engineering schedules (XER, XML, XLSX) and field artifacts (PDF, audio)
     request_body {
         max_size 100MB

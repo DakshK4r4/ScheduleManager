@@ -1,8 +1,11 @@
-# Environment variables
+# Environment variables and secrets
 .env
 .env*.local
 *.env
+.env.afs
 !.env.example
+secrets/
+/secrets/
 
 # Python
 __pycache__/
