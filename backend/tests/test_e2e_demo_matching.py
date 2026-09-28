@@ -7,11 +7,16 @@ from app.domain.models import Activity, ExecutionEvent, WBSNode
 from pathlib import Path
 
 def test_demo_matching_produces_3_auto_link_1_review():
-    pdf_path = Path(__file__).resolve().parent.parent.parent / "samples" / "ScheduleManager_Demo_Field_Report_4_Cases.pdf"
-    if not pdf_path.exists():
-        pdf_path = Path("/samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf")
-    if not pdf_path.exists():
-        pdf_path = Path("samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf")
+    candidate_paths = [
+        Path(__file__).resolve().parent.parent.parent / "samples" / "ScheduleManager_Demo_Field_Report_4_Cases.pdf",
+        Path(__file__).resolve().parent.parent / "samples" / "ScheduleManager_Demo_Field_Report_4_Cases.pdf",
+        Path("backend/samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf"),
+        Path("samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf"),
+        Path("/app/samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf"),
+        Path("/samples/ScheduleManager_Demo_Field_Report_4_Cases.pdf"),
+    ]
+    pdf_path = next((p for p in candidate_paths if p.exists()), None)
+    assert pdf_path is not None, f"Could not find demo PDF in candidates: {candidate_paths}"
 
     with open(pdf_path, 'rb') as f:
         items = ExtractionService.parse_pdf(f.read())
