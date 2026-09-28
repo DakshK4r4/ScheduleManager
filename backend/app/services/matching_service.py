@@ -14,40 +14,71 @@ logger = logging.getLogger("matching_service")
 
 
 class MatchingService:
-    @staticmethod
-    def _tokenize(text: str) -> set[str]:
+    CONVERSATIONAL_STOP_WORDS = {
+        "update", "progress", "percent", "percentage", "status", "complete", "completed",
+        "completion", "done", "finish", "finished", "started", "start", "activity", "task",
+        "please", "set", "mark", "report", "today", "yesterday", "current", "work", "on",
+        "at", "to", "for", "in", "of", "the", "is", "are", "was", "were", "and",
+        "or", "it", "this", "that", "kar", "karo", "karna", "diya", "gaya", "hai", "ho",
+        "ka", "ki", "ke", "ko", "mein", "par", "se", "bhi", "aaj", "kal"
+    }
+
+    @classmethod
+    def _tokenize(cls, text: str) -> set[str]:
         if not text:
             return set()
         clean = re.sub(r"[^\w\s-]", " ", text.lower())
-        tokens = {t.strip("-") for t in clean.split() if len(t.strip("-")) >= 2 or t.strip("-").isdigit()}
+        tokens = {
+            t.strip("-")
+            for t in clean.split()
+            if (len(t.strip("-")) >= 2 or t.strip("-").isdigit())
+            and t.strip("-") not in cls.CONVERSATIONAL_STOP_WORDS
+        }
         return tokens
+
+    @staticmethod
+    def _tokens_match(ta: str, tb: str) -> bool:
+        """
+        Match two normalized tokens, allowing exact match, numeric equivalence,
+        or safe morphological stem matches with a minimum 4-character root.
+        Explicitly prevents short tokens (e.g. 2-3 chars like 'for' or 'on') from matching substrings.
+        """
+        if ta == tb:
+            return True
+        if ta.isdigit() and tb.isdigit() and int(ta) == int(tb):
+            return True
+        # Morphological root matching for words >= 4 characters
+        if len(ta) >= 4 and len(tb) >= 4:
+            # One starts with the other (e.g. pour / poured, install / installation)
+            if ta.startswith(tb) or tb.startswith(ta):
+                return True
+            # Shared 4-character prefix for common stem inflections (e.g. excavat-e vs excavat-ion)
+            if ta[:4] == tb[:4] and (len(ta) <= len(tb) + 3 and len(tb) <= len(ta) + 3):
+                return True
+        return False
 
     @classmethod
     def calculate_text_similarity(cls, text_a: str, text_b: str) -> float:
         """
         Calculates text alignment between event text (text_a) and activity name (text_b).
         Considers both token coverage (what fraction of activity name terms are mentioned)
-        and token set Jaccard similarity. Supports numeric token equivalence (e.g. '1' == '01').
+        and token set Jaccard similarity. Supports numeric token equivalence and safe stem matching.
         """
         tokens_a = cls._tokenize(text_a)
         tokens_b = cls._tokenize(text_b)
         if not tokens_a or not tokens_b:
             return 0.0
 
-        # Substring / stem-tolerant token coverage of activity name (text_b)
+        # Morphologically-tolerant token coverage of activity name (text_b)
         matched_b = 0
         for tb in tokens_b:
-            if any(
-                tb in ta or ta in tb or (tb.isdigit() and ta.isdigit() and int(tb) == int(ta))
-                for ta in tokens_a
-            ):
+            if any(cls._tokens_match(ta, tb) for ta in tokens_a):
                 matched_b += 1
         coverage = matched_b / len(tokens_b) if tokens_b else 0.0
 
-        # Jaccard index
-        intersection = tokens_a.intersection(tokens_b)
-        union = tokens_a.union(tokens_b)
-        jaccard = len(intersection) / len(union) if union else 0.0
+        # Jaccard index with morphological token equivalence
+        union_count = len(tokens_a) + len(tokens_b) - matched_b
+        jaccard = matched_b / union_count if union_count > 0 else 0.0
 
         return round(0.75 * coverage + 0.25 * jaccard, 3)
 
@@ -92,15 +123,6 @@ class MatchingService:
         elif delta_days <= 30:
             return 0.4
         return 0.1
-
-    CONVERSATIONAL_STOP_WORDS = {
-        "update", "progress", "percent", "percentage", "status", "complete", "completed",
-        "completion", "done", "finish", "finished", "started", "start", "activity", "task",
-        "please", "set", "mark", "report", "today", "yesterday", "current", "work", "on",
-        "at", "to", "for", "in", "of", "the", "is", "are", "was", "were", "and",
-        "or", "it", "this", "that", "kar", "karo", "karna", "diya", "gaya", "hai", "ho",
-        "ka", "ki", "ke", "ko", "mein", "par", "se", "bhi", "aaj", "kal"
-    }
 
     @classmethod
     def _extract_subject_tokens(cls, text: str) -> List[str]:
@@ -237,13 +259,15 @@ class MatchingService:
 
         # Weighted combination:
         # If exact activity code is present, S_total is guaranteed >= 0.95.
-        # If exact location tag is present (e.g. Unit 4 in 'Mechanical Pump Installation Unit 4'), S_total is guaranteed >= 0.95.
-        # If exact subject keywords match activity name, S_total is guaranteed >= 0.88.
-        # If activity code/tag is not present, weights normalize across text, wbs, temporal, and contextual signals.
+        # If exact location AND strong activity text match (s_text >= 0.80 or exact subject),
+        # this represents a high-confidence grounded match (guaranteed >= 0.92).
+        # Location alone NEVER imposes an artificial floor on unrelated activities.
+        # If activity code is not present, weights normalize across text, wbs, temporal, and contextual signals.
         if s_id == 1.0:
             s_total = max(0.95, 0.40 * s_id + 0.30 * s_text + 0.15 * s_wbs + 0.10 * s_temp + 0.05 * s_context)
-        elif exact_location_matched:
-            s_total = max(0.95 if (exact_subject_matched or s_text >= 0.80) else 0.88, 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp)
+        elif exact_location_matched and (exact_subject_matched or s_text >= 0.80):
+            weighted_calc = 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp
+            s_total = max(0.92, weighted_calc)
         elif exact_subject_matched and not location_conflict:
             s_total = max(0.88, 0.50 * s_text + 0.25 * s_wbs + 0.15 * s_temp + 0.10 * s_context)
         else:
@@ -264,6 +288,10 @@ class MatchingService:
             "s_temp": round(s_temp, 3),
             "s_context": round(s_context, 3),
             "s_total": round(s_total, 3),
+            "text": round(s_text, 3),
+            "wbs": round(s_wbs, 3),
+            "temporal": round(s_temp, 3),
+            "context": round(s_context, 3),
         }
         return round(s_total, 3), breakdown
 

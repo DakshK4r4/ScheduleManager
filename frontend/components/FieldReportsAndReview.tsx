@@ -584,10 +584,23 @@ export default function FieldReportsAndReview({
                             <div className="font-medium text-slate-700 mt-1 truncate">
                               {cand.activity_name}
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              Signal Breakdown: Text {cand.score_breakdown?.semantic_text || "-"} | WBS{" "}
-                              {cand.score_breakdown?.wbs_context || "-"} | Discipline{" "}
-                              {cand.score_breakdown?.discipline_match || "-"}
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              Signal Breakdown: Text{" "}
+                              {(cand.score_breakdown?.s_text ?? cand.score_breakdown?.text) != null
+                                ? `${Math.round(((cand.score_breakdown?.s_text ?? cand.score_breakdown?.text) as number) * 100)}%`
+                                : "-"}
+                              {" | "}WBS{" "}
+                              {(cand.score_breakdown?.s_wbs ?? cand.score_breakdown?.wbs) != null
+                                ? `${Math.round(((cand.score_breakdown?.s_wbs ?? cand.score_breakdown?.wbs) as number) * 100)}%`
+                                : "-"}
+                              {" | "}Temporal{" "}
+                              {(cand.score_breakdown?.s_temp ?? cand.score_breakdown?.temporal) != null
+                                ? `${Math.round(((cand.score_breakdown?.s_temp ?? cand.score_breakdown?.temporal) as number) * 100)}%`
+                                : "-"}
+                              {" | "}Context{" "}
+                              {(cand.score_breakdown?.s_context ?? cand.score_breakdown?.context) != null
+                                ? `${Math.round(((cand.score_breakdown?.s_context ?? cand.score_breakdown?.context) as number) * 100)}%`
+                                : "-"}
                             </div>
                           </div>
                         );
