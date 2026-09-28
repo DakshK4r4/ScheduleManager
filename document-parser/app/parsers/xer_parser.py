@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 from app.models.canonical import (
@@ -270,7 +271,36 @@ class XerParser(BaseParser):
             elif raw_wbs in wbs_code_set:
                 wbs_code = raw_wbs
             else:
-                wbs_code = root_wbs_code
+                # Fuzzy match by task name tokens / discipline against WBS hierarchy
+                matched_wbs = None
+                task_lower = f"{task_code} {task_name}".lower()
+                prefix = task_code.split("-")[0].upper() if "-" in task_code else ""
+                disc_map = {
+                    "CIV": "Civil",
+                    "STR": "Structural",
+                    "MEC": "Mechanical",
+                    "ELE": "Electrical",
+                    "PIP": "Piping",
+                }
+                inferred_disc = disc_map.get(prefix)
+
+                # 1. Best match: leaf WBS whose word stems match task name (e.g. "pier", "concrete", "preliminaries")
+                for w in reversed(canonical_wbs_list):
+                    if w.code == root_wbs_code:
+                        continue
+                    w_words = [wd.strip().lower().rstrip("s") for wd in re.split(r"\W+", w.name) if len(wd) > 3]
+                    if any(wd in task_lower for wd in w_words):
+                        matched_wbs = w.code
+                        break
+
+                # 2. Fallback: match by discipline branch
+                if not matched_wbs and inferred_disc:
+                    for w in canonical_wbs_list:
+                        if inferred_disc.lower() in w.name.lower():
+                            matched_wbs = w.code
+                            break
+
+                wbs_code = matched_wbs or root_wbs_code
 
             # Percent complete
             pct_raw = (
@@ -341,13 +371,28 @@ class XerParser(BaseParser):
                 orig_dur = max(0.0, float((plan_finish - plan_start).days))
             rem_dur = round(remain_hr / hours_per_day, 2) if remain_hr is not None else orig_dur
 
+            # Quantities and Units
+            planned_qty = self.parse_float(row.get("planned_qty") or row.get("target_qty") or row.get("planned_quantity"))
+            qty_unit = (row.get("qty_unit") or row.get("unit") or row.get("target_unit") or "").strip() or None
+
+            # Discipline & Location
+            act_codes = dict(task_id_to_codes.get(task_id, {}))
+            discipline = row.get("discipline") or act_codes.get("Discipline") or act_codes.get("DISCIPLINE")
+            if not discipline:
+                prefix = task_code.split("-")[0].upper() if "-" in task_code else ""
+                disc_map = {
+                    "CIV": "Civil",
+                    "STR": "Structural",
+                    "MEC": "Mechanical",
+                    "ELE": "Electrical",
+                    "PIP": "Piping",
+                }
+                discipline = disc_map.get(prefix)
+
             # Constraints
             raw_cstr_type = row.get("cstr_type", "").strip()
             cstr_type = P6_CONSTRAINT_MAP.get(raw_cstr_type, raw_cstr_type) if raw_cstr_type else None
             cstr_date = self.parse_datetime(row.get("cstr_date"))
-
-            # Activity codes
-            act_codes = dict(task_id_to_codes.get(task_id, {}))
 
             canonical_activities.append(
                 CanonicalActivity(
@@ -366,6 +411,9 @@ class XerParser(BaseParser):
                     calendar=cal_display,
                     constraint_type=cstr_type,
                     constraint_date=cstr_date,
+                    planned_quantity=planned_qty,
+                    quantity_unit=qty_unit,
+                    discipline=discipline,
                     activity_codes=act_codes,
                     notes="\n".join(task_id_to_memos[task_id]) if task_id in task_id_to_memos else None,
                 )

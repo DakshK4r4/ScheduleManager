@@ -64,6 +64,18 @@ COLUMN_ALIASES: Dict[str, List[str]] = {
     "successors": [
         "successor", "successors", "succ", "succs", "successor code"
     ],
+    "planned_quantity": [
+        "planned_quantity", "planned quantity", "planned_qty", "qty", "quantity", "planned qty"
+    ],
+    "quantity_unit": [
+        "unit", "quantity_unit", "qty_unit", "uom", "quantity unit"
+    ],
+    "discipline": [
+        "discipline", "disc"
+    ],
+    "location_code": [
+        "location", "location_code", "area"
+    ],
 }
 
 
@@ -200,12 +212,29 @@ def build_canonical_schedule_from_rows(
             if not raw_code:
                 raw_code = generate_stable_activity_code(raw_name, raw_wbs, generated_code_counts)
 
-        if raw_wbs and raw_wbs not in canonical_wbs_map:
-            canonical_wbs_map[raw_wbs] = CanonicalWBSNode(
-                code=raw_wbs,
-                name=raw_wbs,
-                parent_code=None,
-            )
+        if raw_wbs:
+            # Check if slash or separator indicates hierarchy
+            parts = [p.strip() for p in re.split(r"\s*[/\\>]\s*", raw_wbs) if p.strip()]
+            if len(parts) > 1:
+                curr_parent = None
+                curr_path = ""
+                for part in parts:
+                    curr_path = f"{curr_path} / {part}" if curr_path else part
+                    if curr_path not in canonical_wbs_map:
+                        canonical_wbs_map[curr_path] = CanonicalWBSNode(
+                            code=curr_path,
+                            name=part,
+                            parent_code=curr_parent,
+                        )
+                    curr_parent = curr_path
+                raw_wbs = curr_path
+            else:
+                if raw_wbs not in canonical_wbs_map:
+                    canonical_wbs_map[raw_wbs] = CanonicalWBSNode(
+                        code=raw_wbs,
+                        name=raw_wbs,
+                        parent_code=None,
+                    )
 
         # Status
         status_val = (row.get(col_map.get("status", ""), "") or "").lower().strip()
@@ -231,11 +260,21 @@ def build_canonical_schedule_from_rows(
         act_start = parser.parse_datetime(row.get(col_map.get("actual_start", ""), ""))
         act_finish = parser.parse_datetime(row.get(col_map.get("actual_finish", ""), ""))
 
-        # Duration
+        # Duration: if missing from table, auto-calculate working/calendar days from dates
         orig_dur = parser.parse_float(row.get(col_map.get("original_duration", ""), ""))
+        if orig_dur is None and plan_start and plan_finish:
+            diff_days = (plan_finish.date() - plan_start.date()).days
+            orig_dur = max(1.0, float(diff_days + (1 if plan_finish.time() == plan_start.time() else 0)))
+
         rem_dur = parser.parse_float(row.get(col_map.get("remaining_duration", ""), ""))
         if rem_dur is None and orig_dur is not None:
             rem_dur = 0.0 if status == ActivityStatus.COMPLETED else orig_dur * (1.0 - (pct / 100.0))
+
+        # Quantities, Units, Discipline, Location
+        planned_qty = parser.parse_float(row.get(col_map.get("planned_quantity", ""), "")) if "planned_quantity" in col_map else None
+        qty_unit = (row.get(col_map.get("quantity_unit", ""), "").strip() or None) if "quantity_unit" in col_map else None
+        discipline = (row.get(col_map.get("discipline", ""), "").strip() or None) if "discipline" in col_map else None
+        location_code = (row.get(col_map.get("location_code", ""), "").strip() or None) if "location_code" in col_map else None
 
         canonical_activities.append(
             CanonicalActivity(
@@ -252,6 +291,10 @@ def build_canonical_schedule_from_rows(
                 remaining_duration=round(rem_dur, 2) if rem_dur is not None else None,
                 percent_complete=pct,
                 calendar=row.get(col_map.get("calendar", ""), "").strip() or None,
+                planned_quantity=planned_qty,
+                quantity_unit=qty_unit,
+                discipline=discipline,
+                location_code=location_code,
             )
         )
         seen_activities.add(raw_code)

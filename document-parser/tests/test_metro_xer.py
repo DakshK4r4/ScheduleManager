@@ -63,3 +63,60 @@ def test_metro_xer_parsing():
     rel_pairs = [(r.predecessor_code, r.successor_code) for r in result.relationships]
     assert ("CIV-2010", "CIV-2020") in rel_pairs
     assert ("CIV-2020", "CIV-2030") in rel_pairs
+
+    # Verify quantities and units parsed from XER
+    civ_2040 = next(a for a in result.activities if a.activity_code == "CIV-2040")
+    assert civ_2040.planned_quantity == 140.0
+    assert civ_2040.quantity_unit == "m3"
+    assert civ_2040.wbs_code in ("1.1.2.1", "1.1.2", "1.1")  # Smart WBS matched to Piers/Substructure/Civil
+
+    pip_6010 = next(a for a in result.activities if a.activity_code == "PIP-6010")
+    assert pip_6010.planned_quantity == 180.0
+    assert pip_6010.quantity_unit == "m"
+    assert pip_6010.discipline == "Piping"
+
+
+METRO_CSV = """activity_code,activity_name,wbs,planned_start,planned_finish,planned_quantity,unit,discipline,predecessor
+CIV-2010,Site Mobilization,Civil Works / Preliminaries,2026-09-01,2026-09-04,1,LS,Civil,
+CIV-2020,Pier 13 Foundation Excavation,Civil Works / Substructure / Piers,2026-09-05,2026-09-10,850,m3,Civil,CIV-2010
+CIV-2030,Pier 14 Reinforcement & Formwork,Civil Works / Substructure / Piers,2026-09-08,2026-09-14,32,t,Civil,CIV-2020
+CIV-2040,Pier 14 Cap Beam Concrete Pour,Civil Works / Substructure / Piers,2026-09-10,2026-09-25,140,m3,Civil,CIV-2030
+CIV-2041,Pier 15 Cap Beam Concrete Pour,Civil Works / Substructure / Piers,2026-09-12,2026-09-27,140,m3,Civil,CIV-2030
+CIV-2050,Pier 14 Concrete Curing & Inspection,Civil Works / Substructure / Piers,2026-09-16,2026-09-29,1,LS,Civil,CIV-2040
+STR-3010,Pier 14 Bearing Pedestal Installation,Structural Works / Bearings,2026-09-24,2026-10-02,4,EA,Structural,CIV-2050
+MEC-4010,Temporary Access Platform Installation,Mechanical / Access,2026-09-18,2026-09-22,1,LS,Mechanical,CIV-2030
+ELE-5010,Temporary Site Power Distribution,Electrical / Temporary Works,2026-09-03,2026-09-12,1,LS,Electrical,CIV-2010
+PIP-6010,Drainage Header Installation,Piping / Drainage,2026-09-20,2026-10-05,180,m,Piping,CIV-2010
+"""
+
+def test_metro_csv_parsing():
+    from app.parsers.csv_parser import CsvParser
+    parser = CsvParser()
+    result = parser.parse(METRO_CSV.encode("utf-8"), "Metro_Bridge_Demo_Schedule.csv")
+
+    assert len(result.activities) == 10
+    assert len(result.relationships) == 9
+
+    # Verify hierarchical WBS nodes were generated from slash-separated paths
+    wbs_codes = [w.code for w in result.wbs]
+    assert "Civil Works" in wbs_codes
+    assert "Civil Works / Substructure" in wbs_codes
+    assert "Civil Works / Substructure / Piers" in wbs_codes
+
+    # Check child-parent linking
+    sub_node = next(w for w in result.wbs if w.code == "Civil Works / Substructure")
+    assert sub_node.parent_code == "Civil Works"
+    piers_node = next(w for w in result.wbs if w.code == "Civil Works / Substructure / Piers")
+    assert piers_node.parent_code == "Civil Works / Substructure"
+
+    # Verify quantity, unit, discipline, and auto-computed duration
+    civ_2040 = next(a for a in result.activities if a.activity_code == "CIV-2040")
+    assert civ_2040.planned_quantity == 140.0
+    assert civ_2040.quantity_unit == "m3"
+    assert civ_2040.discipline == "Civil"
+    assert civ_2040.original_duration is not None and civ_2040.original_duration > 0
+
+    pip_6010 = next(a for a in result.activities if a.activity_code == "PIP-6010")
+    assert pip_6010.planned_quantity == 180.0
+    assert pip_6010.quantity_unit == "m"
+    assert pip_6010.discipline == "Piping"

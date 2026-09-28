@@ -50,6 +50,10 @@ class CanonicalActivity(BaseModel):
     calendar: Optional[str] = Field(None, description="Calendar name or assignment")
     constraint_type: Optional[str] = Field(None, description="Primary constraint type (e.g. MANDATORY_START, FINISH_NO_LATER)")
     constraint_date: Optional[datetime] = Field(None, description="Primary constraint date")
+    planned_quantity: Optional[float] = Field(None, description="Planned total quantity")
+    quantity_unit: Optional[str] = Field(None, description="Unit of measurement (e.g. m3, t, EA)")
+    discipline: Optional[str] = Field(None, description="Discipline (e.g. Civil, Structural, Piping)")
+    location_code: Optional[str] = Field(None, description="Location code or Area")
     activity_codes: Dict[str, str] = Field(default_factory=dict, description="Activity codes map (e.g. {'Discipline': 'Civil'})")
     notes: Optional[str] = Field(None, description="Activity notes or task memo")
 

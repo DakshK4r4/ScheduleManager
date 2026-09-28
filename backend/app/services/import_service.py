@@ -167,6 +167,8 @@ class ImportService:
                     calendar=a.get("calendar"),
                     constraint_type=a.get("constraint_type"),
                     constraint_date=parse_dt(a.get("constraint_date")),
+                    planned_quantity=a.get("planned_quantity"),
+                    quantity_unit=a.get("quantity_unit") or a.get("unit"),
                     activity_codes=act_codes if act_codes else None,
                     discipline=a.get("discipline") or act_codes.get("Discipline") or act_codes.get("DISCIPLINE"),
                     location_code=a.get("location_code") or act_codes.get("Location") or act_codes.get("LOCATION") or act_codes.get("Area") or act_codes.get("AREA"),
