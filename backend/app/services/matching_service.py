@@ -277,7 +277,23 @@ class MatchingService:
             loc_lower = event.location.lower().strip()
             act_loc_lower = (activity.location_code or "").lower().strip()
             act_name_lower = activity.name.lower()
-            if loc_lower and (loc_lower in act_name_lower or (act_loc_lower and (loc_lower in act_loc_lower or act_loc_lower in loc_lower))):
+
+            # Extract structured location tags (e.g. pier 14 vs pier 15, span 3, tower 2)
+            loc_tag_pattern = r"\b(pier|p|pillar|zone|span|bay|level|tower|block)\s*(\d+)\b"
+            ev_loc_tags = set(re.findall(loc_tag_pattern, loc_lower))
+            act_loc_tags = set(re.findall(loc_tag_pattern, f"{act_loc_lower} {act_name_lower}"))
+
+            has_conflicting_loc_tag = False
+            for ev_tag_type, ev_tag_num in ev_loc_tags:
+                conflicting = [t_num for t_type, t_num in act_loc_tags if t_type == ev_tag_type and t_num != ev_tag_num]
+                if conflicting:
+                    has_conflicting_loc_tag = True
+                    break
+
+            if has_conflicting_loc_tag:
+                location_conflict = True
+                s_context = 0.0
+            elif loc_lower and (loc_lower in act_name_lower or (act_loc_lower and (loc_lower in act_loc_lower or act_loc_lower in loc_lower))):
                 s_context = 1.0
                 exact_location_matched = True
             elif act_loc_lower:
