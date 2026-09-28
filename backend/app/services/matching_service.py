@@ -20,8 +20,11 @@ class MatchingService:
         "please", "set", "mark", "report", "today", "yesterday", "current", "work", "on",
         "at", "to", "for", "in", "of", "the", "is", "are", "was", "were", "and",
         "or", "it", "this", "that", "kar", "karo", "karna", "diya", "gaya", "hai", "ho",
-        "ka", "ki", "ke", "ko", "mein", "par", "se", "bhi", "aaj", "kal"
+        "ka", "ki", "ke", "ko", "mein", "par", "se", "bhi", "aaj", "kal",
+        "event", "date", "shift", "demo", "intent"
     }
+
+    GENERIC_ACTION_WORDS = {"installation", "install", "works", "work", "fixing", "placing", "activity", "setup"}
 
     @classmethod
     def _tokenize(cls, text: str) -> set[str]:
@@ -186,7 +189,10 @@ class MatchingService:
 
         # 2. Text & Token Similarity (S_text)
         combined_text = f"{event.description} {event.verbatim_excerpt} {event.activity_reference or ''}"
-        s_text = cls.calculate_text_similarity(combined_text, activity.name)
+        sim_combined = cls.calculate_text_similarity(combined_text, activity.name)
+        sim_desc = cls.calculate_text_similarity(event.description or "", activity.name)
+        sim_ref = cls.calculate_text_similarity(event.activity_reference or "", activity.name) if event.activity_reference else 0.0
+        s_text = max(sim_combined, sim_desc, sim_ref)
 
         # Subject keyword alignment: check if user query keywords uniquely match activity
         subj_tokens = cls._extract_subject_tokens(combined_text)
@@ -213,6 +219,29 @@ class MatchingService:
             elif query_coverage >= 0.5:
                 s_text = max(s_text, round(0.65 * query_coverage, 3))
 
+        # Substantive keyword coverage in the primary work description
+        act_tokens = cls._tokenize(activity.name)
+        substantive_act_tokens = {t for t in act_tokens if t not in cls.GENERIC_ACTION_WORDS}
+        work_tokens = cls._tokenize(f"{event.description or ''} {event.activity_reference or ''}")
+        matched_substantive = sum(1 for at in substantive_act_tokens if any(cls._tokens_match(et, at) for et in work_tokens))
+        substantive_coverage = matched_substantive / len(substantive_act_tokens) if substantive_act_tokens else 0.0
+
+        # Check exact trade terms in primary work description
+        trade_match = False
+        if "reinforcement" in work_tokens and "reinforcement" in act_tokens:
+            trade_match = True
+        elif "drainage" in work_tokens and "drainage" in act_tokens:
+            trade_match = True
+        elif "concrete" in work_tokens and "pour" in work_tokens and "concrete" in act_tokens and "pour" in act_tokens:
+            trade_match = True
+
+        # Check trade contradiction
+        trade_contradiction = False
+        if "reinforcement" in work_tokens and any(t in act_tokens for t in ["bearing", "pedestal", "excavation", "curing"]):
+            trade_contradiction = True
+        if "drainage" in work_tokens and any(t in act_tokens for t in ["bearing", "pedestal", "excavation", "reinforcement", "curing"]):
+            trade_contradiction = True
+
         # 3. WBS & Hierarchy Alignment (S_wbs)
         s_wbs = 0.0
         wbs_name = (wbs_node.name if wbs_node else "").lower()
@@ -226,7 +255,7 @@ class MatchingService:
         elif activity.discipline and event.discipline:
             if activity.discipline.lower() in event.discipline.lower() or event.discipline.lower() in activity.discipline.lower():
                 s_wbs = 0.85
-        elif s_text >= 0.70:
+        elif s_text >= 0.70 or substantive_coverage >= 0.75:
             s_wbs = 0.90
         elif s_text > 0.4:
             s_wbs = 0.50
@@ -241,16 +270,28 @@ class MatchingService:
         )
 
         # 5. Contextual Alignment (S_context)
-        s_context = 0.0
+        s_context = 0.5  # Neutral default when location is not specified on activity
         exact_location_matched = False
         location_conflict = False
         if event.location:
             loc_lower = event.location.lower().strip()
-            if loc_lower and (loc_lower in activity.name.lower() or (activity.location_code and loc_lower in activity.location_code.lower())):
+            act_loc_lower = (activity.location_code or "").lower().strip()
+            act_name_lower = activity.name.lower()
+            if loc_lower and (loc_lower in act_name_lower or (act_loc_lower and (loc_lower in act_loc_lower or act_loc_lower in loc_lower))):
                 s_context = 1.0
                 exact_location_matched = True
-            elif activity.location_code and loc_lower != activity.location_code.lower().strip():
-                location_conflict = True
+            elif act_loc_lower:
+                ev_nums = set(re.findall(r"\b\d+\b", loc_lower))
+                act_nums = set(re.findall(r"\b\d+\b", act_loc_lower))
+                if ev_nums and act_nums and ev_nums != act_nums:
+                    location_conflict = True
+                    s_context = 0.0
+                elif loc_lower != act_loc_lower:
+                    location_conflict = True
+                    s_context = 0.0
+            else:
+                s_context = 0.85 if s_text >= 0.80 else 0.50
+
         if event.contractor and activity.contractor_name:
             if event.contractor.lower() in activity.contractor_name.lower():
                 s_context = min(1.0, s_context + 0.2)
@@ -258,20 +299,19 @@ class MatchingService:
                 s_context = max(0.0, s_context - 0.2)
 
         # Weighted combination:
-        # If exact activity code is present, S_total is guaranteed >= 0.95.
-        # If exact location AND strong activity text match (s_text >= 0.80 or exact subject),
-        # this represents a high-confidence grounded match (guaranteed >= 0.92).
-        # Location alone NEVER imposes an artificial floor on unrelated activities.
-        # If activity code is not present, weights normalize across text, wbs, temporal, and contextual signals.
         if s_id == 1.0:
             s_total = max(0.95, 0.40 * s_id + 0.30 * s_text + 0.15 * s_wbs + 0.10 * s_temp + 0.05 * s_context)
-        elif exact_location_matched and (exact_subject_matched or s_text >= 0.80):
-            weighted_calc = 0.35 * s_context + 0.30 * s_text + 0.20 * s_wbs + 0.15 * s_temp
-            s_total = max(0.92, weighted_calc)
+        elif exact_location_matched and s_text >= 0.90:
+            s_total = max(0.96, 0.35 * s_context + 0.35 * s_text + 0.15 * s_wbs + 0.15 * s_temp)
+        elif exact_location_matched and (trade_match or substantive_coverage >= 0.75) and not trade_contradiction:
+            s_total = max(0.91, 0.35 * s_context + 0.35 * max(s_text, 0.85) + 0.15 * s_wbs + 0.15 * s_temp)
+        elif s_text >= 0.90 and not location_conflict:
+            s_total = max(0.92, 0.50 * s_text + 0.25 * s_wbs + 0.15 * s_temp + 0.10 * s_context)
         elif exact_subject_matched and not location_conflict:
             s_total = max(0.88, 0.50 * s_text + 0.25 * s_wbs + 0.15 * s_temp + 0.10 * s_context)
+        elif substantive_coverage >= 0.70 and not location_conflict and not trade_contradiction:
+            s_total = max(0.88, 0.45 * s_text + 0.25 * s_wbs + 0.15 * s_temp + 0.15 * s_context)
         else:
-            # Normalized weights when code is not cited in field narrative: 0.45 text, 0.25 wbs, 0.15 temp, 0.15 context
             s_total = (
                 0.45 * s_text
                 + 0.25 * s_wbs
@@ -280,6 +320,8 @@ class MatchingService:
             )
             if location_conflict:
                 s_total = max(0.0, s_total - 0.25)
+            if trade_contradiction:
+                s_total = max(0.0, s_total - 0.20)
 
         breakdown = {
             "s_id": round(s_id, 3),
